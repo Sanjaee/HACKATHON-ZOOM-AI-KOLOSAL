@@ -39,7 +39,6 @@ function getUserIdFromToken(token: string | null): string | null {
     // Return userId from token (this is the database ID)
     return payload.userId || payload.user_id || payload.sub || null;
   } catch (error) {
-    console.error("[Chat] Error decoding token:", error);
     return null;
   }
 }
@@ -86,7 +85,6 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       const data = await response.json();
       setMessages(data.data || []);
     } catch (error: any) {
-      console.error("Error fetching messages:", error);
       toast({
         title: "Error",
         description: "Gagal memuat pesan",
@@ -102,7 +100,6 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
 
     const token = api.getAccessToken();
     if (!token) {
-      console.error("No access token for WebSocket");
       return;
     }
 
@@ -122,14 +119,12 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       wsUrl = `${wsProtocol}//${wsHost}/api/v1/rooms/${roomId}/chat/ws?token=${encodeURIComponent(token)}`;
     }
 
-    console.log("[WS] Attempting to connect to:", wsUrl.replace(/token=[^&]*/, "token=***"));
-
     try {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("[WS] WebSocket connected successfully for chat");
+        // WebSocket connected
       };
 
       ws.onmessage = (event) => {
@@ -145,24 +140,15 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             });
           }
         } catch (error) {
-          console.error("Error parsing WebSocket message:", error);
+          // Error parsing WebSocket message
         }
       };
 
       ws.onerror = (error) => {
-        console.error("[WS] WebSocket error:", error);
-        console.error("[WS] Error details:", {
-          readyState: ws.readyState,
-          url: wsUrl.replace(/token=[^&]*/, "token=***"),
-        });
+        // WebSocket error
       };
 
       ws.onclose = (event) => {
-        console.log("[WS] WebSocket disconnected:", {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean,
-        });
         // Reconnect after 3 seconds
         setTimeout(() => {
           if (isOpen) {
@@ -171,7 +157,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
         }, 3000);
       };
     } catch (error) {
-      console.error("Error connecting WebSocket:", error);
+      // Error connecting WebSocket
     }
   }, [roomId, userId, isOpen]);
 
@@ -230,7 +216,6 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
 
       setNewMessage("");
     } catch (error: any) {
-      console.error("Error sending message:", error);
       toast({
         title: "Error",
         description: error.message || "Gagal mengirim pesan",
@@ -292,21 +277,6 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
               const messageUserId = String(msg.user_id || "").trim();
               const currentUser = String(databaseUserId || "").trim();
               const isOwnMessage = currentUser !== "" && currentUser === messageUserId;
-              
-              // Debug logging untuk memastikan validasi bekerja
-              if (messages.indexOf(msg) < 3) {
-                console.log("[Chat Debug]", {
-                  databaseUserId: currentUser,
-                  messageUserId,
-                  isOwnMessage,
-                  msgUserName: msg.user_name,
-                  sessionGoogleId: session?.user?.id,
-                  userIdProp: userId,
-                  match: currentUser === messageUserId,
-                  tokenUserId: getUserIdFromToken(session?.accessToken as string || api.getAccessToken()),
-                  usingToken: "✅ Menggunakan userId dari JWT token (database ID)"
-                });
-              }
               
               return (
                 <div
