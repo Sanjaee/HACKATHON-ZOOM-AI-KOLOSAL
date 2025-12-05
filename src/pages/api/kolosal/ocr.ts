@@ -8,11 +8,6 @@ function getKolosalApiKey(): string {
   const apiKey = process.env.KOLOSAL_API_KEY;
   
   if (!apiKey) {
-    // Log available env vars for debugging
-    const envKeys = Object.keys(process.env || {}).filter(key => 
-      key.includes('KOLOSAL') || key.includes('API')
-    );
-    console.error("OCR: KOLOSAL_API_KEY not found. Available env keys:", envKeys);
     throw new Error("KOLOSAL_API_KEY environment variable is not set");
   }
   
@@ -93,7 +88,6 @@ function base64ToBuffer(base64: string): { buffer: Buffer; mimeType: string } | 
     }
     return { buffer, mimeType };
   } catch (error) {
-    console.error("Error converting base64 to buffer:", error);
     return null;
   }
 }
@@ -101,14 +95,12 @@ function base64ToBuffer(base64: string): { buffer: Buffer; mimeType: string } | 
 // Upload image to Cloudinary and return URL (fallback if base64 fails)
 async function uploadToCloudinary(base64: string): Promise<string | null> {
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
-    console.log("OCR: Cloudinary not configured, skipping upload");
     return null;
   }
 
   try {
     const bufferData = base64ToBuffer(base64);
     if (!bufferData || !bufferData.buffer) {
-      console.error("OCR: Failed to convert base64 to buffer for Cloudinary");
       return null;
     }
 
@@ -128,15 +120,12 @@ async function uploadToCloudinary(base64: string): Promise<string | null> {
     if (statusCode === 200) {
       const result = await safeJsonParse(body);
       if (result.secure_url) {
-        console.log("OCR: Successfully uploaded to Cloudinary:", result.secure_url);
         return result.secure_url;
       }
     }
     
-    console.error("OCR: Cloudinary upload failed:", statusCode);
     return null;
   } catch (error) {
-    console.error("OCR: Cloudinary upload error:", error);
     return null;
   }
 }
@@ -167,7 +156,6 @@ export default async function handler(
         return handleOcrExtract(req, res, apiKey);
     }
   } catch (error) {
-    console.error("OCR API error:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -181,13 +169,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // Log request info for debugging
-  console.log("OCR Extract - Content-Type:", req.headers["content-type"]);
-  console.log("OCR Extract - Body type:", typeof req.body);
-  console.log("OCR Extract - Has image_data:", !!req.body?.image_data);
-  console.log("OCR Extract - image_data type:", typeof req.body?.image_data);
-  console.log("OCR Extract - image_data length:", req.body?.image_data?.length || 0);
-
   const {
     image_data,
     language = "auto",
@@ -199,7 +180,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
   }: OcrRequest = req.body || {};
 
   if (!image_data && !gcs_url) {
-    console.error("OCR: Missing image_data and gcs_url");
     return res.status(400).json({ error: "Image data or GCS URL is required" });
   }
 
@@ -247,7 +227,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
       
       // Validate base64 string is not empty
       if (!cleanBase64 || cleanBase64.length === 0) {
-        console.error("OCR: Base64 is empty after processing");
         return res.status(400).json({
           error: "Invalid image data",
           message: "Base64 image data is empty after processing",
@@ -256,7 +235,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
       
       // Validate minimum length (base64 should be at least a few characters)
       if (cleanBase64.length < 100) {
-        console.error("OCR: Base64 too short:", cleanBase64.length);
         return res.status(400).json({
           error: "Invalid image data",
           message: "Image data is too short. Please upload a valid image file.",
@@ -267,9 +245,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
       // Base64 can contain: A-Z, a-z, 0-9, +, /, = (padding)
       const base64Regex = /^[A-Za-z0-9+/=]+$/;
       if (!base64Regex.test(cleanBase64)) {
-        console.error("OCR: Invalid base64 format, length:", cleanBase64.length);
-        // Log first 50 chars for debugging (without exposing full data)
-        console.error("OCR: Base64 preview:", cleanBase64.substring(0, 50));
         return res.status(400).json({
           error: "Invalid image format",
           message: "Invalid base64 format. Please upload a valid image file.",
@@ -281,7 +256,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
       try {
         const testBuffer = Buffer.from(cleanBase64, "base64");
         if (!testBuffer || testBuffer.length === 0) {
-          console.error("OCR: Base64 decode test failed - empty buffer");
           return res.status(400).json({
             error: "Invalid image format",
             message: "Base64 data cannot be decoded. Please upload a valid image file.",
@@ -301,10 +275,7 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
         } else if (magicBytes[0] === 0x52 && magicBytes[1] === 0x49 && magicBytes[2] === 0x46 && magicBytes[3] === 0x46) {
           detectedMimeType = "image/webp";
         }
-        
-        console.log("OCR: Base64 validation passed, buffer size:", testBuffer.length, "mimeType:", detectedMimeType);
       } catch (error) {
-        console.error("OCR: Base64 decode validation failed:", error);
         return res.status(400).json({
           error: "Invalid image format",
           message: "Base64 data cannot be decoded. Please upload a valid image file.",
@@ -315,19 +286,11 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
       // Format: data:image/jpeg;base64,{base64}
       const dataUrlFormat = `data:${detectedMimeType};base64,${cleanBase64}`;
       requestBody.image_data = dataUrlFormat;
-      console.log("OCR: Using data URL format with mimeType:", detectedMimeType, "length:", cleanBase64.length);
     }
 
     if (custom_schema) {
       requestBody.custom_schema = custom_schema;
     }
-
-    // Log request info (without full base64)
-    console.log("OCR: Sending to Kolosal API");
-    console.log("OCR: Request body keys:", Object.keys(requestBody));
-    const imageDataStr = typeof requestBody.image_data === "string" ? requestBody.image_data : "";
-    console.log("OCR: image_data length:", imageDataStr.length || 0);
-    console.log("OCR: image_data preview:", imageDataStr.substring(0, 50) || "N/A");
 
     const { statusCode, body } = await request(`${KOLOSAL_API_BASE}/ocr`, {
       method: "POST",
@@ -340,12 +303,7 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
 
     const responseData = await safeJsonParse(body);
 
-    console.log("OCR: Kolosal API response status:", statusCode);
-    console.log("OCR: Kolosal API response:", JSON.stringify(responseData).substring(0, 200));
-
     if (statusCode !== 200) {
-      console.error("OCR: Kolosal API error:", responseData);
-      
       // If data URL format failed, try pure base64 format
       if (
         responseData?.error === "invalid_image_format" &&
@@ -353,8 +311,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
         typeof requestBody.image_data === "string" &&
         requestBody.image_data.startsWith("data:")
       ) {
-        console.log("OCR: Data URL format failed, trying pure base64 format...");
-        
         // Extract base64 from data URL
         const base64Match = requestBody.image_data.match(/^data:[^;]+;base64,(.+)$/);
         if (base64Match && base64Match[1]) {
@@ -363,8 +319,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
             ...requestBody,
             image_data: pureBase64, // Use pure base64 instead of data URL
           };
-          
-          console.log("OCR: Retrying with pure base64 format, length:", pureBase64.length);
           
           const { statusCode: retryStatus, body: retryBody } = await request(`${KOLOSAL_API_BASE}/ocr`, {
             method: "POST",
@@ -378,10 +332,7 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
           const retryResponseData = await safeJsonParse(retryBody);
           
           if (retryStatus === 200) {
-            console.log("OCR: Success with pure base64 format");
             return res.status(200).json(retryResponseData);
-          } else {
-            console.error("OCR: Pure base64 format also failed:", retryResponseData);
           }
         }
       }
@@ -393,8 +344,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
         typeof requestBody.image_data === "string" &&
         !requestBody.image_data.startsWith("http")
       ) {
-        console.log("OCR: Base64 failed, trying Cloudinary fallback...");
-        
         // Extract base64
         let base64ForCloudinary = requestBody.image_data;
         
@@ -408,7 +357,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
         const cloudinaryUrl = await uploadToCloudinary(base64ForCloudinary);
         
         if (cloudinaryUrl) {
-          console.log("OCR: Retrying with Cloudinary URL...");
           // Retry with Cloudinary URL
           const retryRequestBody = {
             ...requestBody,
@@ -427,10 +375,7 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
           const retryResponseData = await safeJsonParse(retryBody);
           
           if (retryStatus === 200) {
-            console.log("OCR: Success with Cloudinary URL");
             return res.status(200).json(retryResponseData);
-          } else {
-            console.error("OCR: Cloudinary URL also failed:", retryResponseData);
           }
         }
       }
@@ -443,7 +388,6 @@ async function handleOcrExtract(req: NextApiRequest, res: NextApiResponse, apiKe
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("OCR extract error:", error);
     return res.status(500).json({
       error: "Failed to extract text",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -457,13 +401,6 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  console.log("OCR Form - Content-Type:", req.headers["content-type"]);
-  console.log("OCR Form - Body type:", typeof req.body);
-  console.log("OCR Form - Body keys:", req.body ? Object.keys(req.body) : "no body");
-  console.log("OCR Form - Has image_data:", !!req.body?.image_data);
-  console.log("OCR Form - image_data type:", typeof req.body?.image_data);
-  console.log("OCR Form - image_data length:", req.body?.image_data?.length || 0);
-
   // Handle body parsing - in production, body might not be parsed correctly
   let bodyData: OcrRequest;
   try {
@@ -471,14 +408,12 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
       bodyData = req.body as OcrRequest;
     } else {
       // Try to parse body manually if body parser failed
-      console.log("OCR Form: Body parser may have failed, body is empty or invalid");
       return res.status(400).json({
         error: "Invalid request body",
         message: "Request body is empty or could not be parsed. Please ensure Content-Type is application/json.",
       });
     }
   } catch (error) {
-    console.error("OCR Form: Error parsing body:", error);
     return res.status(400).json({
       error: "Invalid request body",
       message: "Failed to parse request body.",
@@ -495,7 +430,6 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
   } = bodyData;
 
   if (!image_data && !gcs_url) {
-    console.error("OCR Form: Missing image_data and gcs_url");
     return res.status(400).json({ error: "Image data or GCS URL is required" });
   }
 
@@ -504,10 +438,8 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
 
     // Add image file from base64
     if (image_data) {
-      console.log("OCR Form: Processing image_data, length:", image_data.length);
       const bufferData = base64ToBuffer(image_data);
       if (!bufferData || !bufferData.buffer) {
-        console.error("OCR Form: Failed to convert base64 to buffer");
         return res.status(400).json({
           error: "Invalid image data",
           message: "Failed to decode base64 image data",
@@ -515,11 +447,9 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
       }
 
       const { buffer, mimeType } = bufferData;
-      console.log("OCR Form: Buffer created, size:", buffer.length, "mimeType:", mimeType);
       
       // Validate buffer is not null/empty
       if (!buffer || buffer.length === 0) {
-        console.error("OCR Form: Buffer is empty");
         return res.status(400).json({
           error: "Invalid image data",
           message: "Image buffer is empty",
@@ -553,24 +483,18 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
             const blob = new Blob([uint8Array], { type: mimeType });
             // undici FormData.append accepts (name, value, filename?)
             formData.append("image", blob, filename);
-            console.log("OCR Form: Image appended to FormData as Blob, filename:", filename);
           } catch (blobError) {
             // Fallback to Buffer if Blob fails
-            console.log("OCR Form: Blob failed, using Buffer:", blobError);
             // undici FormData.append accepts (name, value, filename?)
             formData.append("image", buffer, filename);
-            console.log("OCR Form: Image appended to FormData as Buffer, filename:", filename);
           }
         } else {
           // Use Buffer directly
           // undici FormData.append accepts (name, value, filename?)
           formData.append("image", buffer, filename);
-          console.log("OCR Form: Image appended to FormData as Buffer, filename:", filename);
         }
       } catch (formDataError) {
-        console.error("OCR Form: FormData append error:", formDataError);
         // Fallback to JSON endpoint
-        console.log("OCR Form: Falling back to JSON endpoint due to FormData error");
         return handleOcrExtract(req, res, apiKey);
       }
     }
@@ -591,13 +515,6 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
       formData.append("gcs_url", gcs_url);
     }
 
-    console.log("OCR Form: Sending to Kolosal API /ocr/form");
-    console.log("OCR Form: FormData fields:", {
-      hasImage: !!image_data,
-      language,
-      invoice,
-    });
-
     const { statusCode, body } = await request(`${KOLOSAL_API_BASE}/ocr/form`, {
       method: "POST",
       headers: {
@@ -606,8 +523,6 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
       },
       body: formData,
     });
-    
-    console.log("OCR Form: Kolosal API response status:", statusCode);
 
     const responseData = await safeJsonParse(body);
 
@@ -617,11 +532,10 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
         responseData?.error === "image_validation_failed" ||
         responseData?.details?.error === "image_validation_failed"
       ) {
-        console.log("Form endpoint failed, falling back to JSON endpoint");
         try {
           return handleOcrExtract(req, res, apiKey);
         } catch (fallbackError) {
-          console.error("Fallback also failed:", fallbackError);
+          // Fallback failed
         }
       }
       
@@ -633,16 +547,13 @@ async function handleOcrForm(req: NextApiRequest, res: NextApiResponse, apiKey: 
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("OCR form error:", error);
-    
     // If multipart/form-data fails, try falling back to JSON endpoint
     if (image_data) {
-      console.log("Falling back to JSON endpoint due to FormData error");
       try {
         // Fallback to extract endpoint with JSON
         return handleOcrExtract(req, res, apiKey);
       } catch (fallbackError) {
-        console.error("Fallback also failed:", fallbackError);
+        // Fallback failed
       }
     }
     

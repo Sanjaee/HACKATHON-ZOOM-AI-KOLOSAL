@@ -84,7 +84,6 @@ export default function ZoomRoomsPage() {
       const data = await api.getRooms() as Room[];
       setRooms(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      console.error("Error fetching rooms:", error);
       toast({
         title: "Error",
         description: error.message || "Gagal memuat rooms",
@@ -149,7 +148,6 @@ export default function ZoomRoomsPage() {
       setMaxParticipants(undefined);
       fetchRooms();
     } catch (error: any) {
-      console.error("Error creating room:", error);
       toast({
         title: "Error",
         description: error.message || "Gagal membuat room",
@@ -206,7 +204,6 @@ export default function ZoomRoomsPage() {
       // Refresh rooms list
       fetchRooms();
     } catch (error: any) {
-      console.error("Error deleting room:", error);
       toast({
         title: "Error",
         description: error.message || "Gagal menghapus room",

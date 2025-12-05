@@ -96,13 +96,11 @@ export default function ZoomCallPage() {
   const joinRoom = useCallback(async (id: string) => {
     // Prevent multiple simultaneous joins
     if (isJoiningRef.current || hasJoinedRef.current) {
-      console.log("[DEBUG] Already joining or joined, skipping...");
       return;
     }
 
     // Check if already connected
     if (room && room.state === "connected") {
-      console.log("[DEBUG] Already connected to room");
       setLoading(false);
       return;
     }
@@ -110,17 +108,15 @@ export default function ZoomCallPage() {
     isJoiningRef.current = true;
 
     try {
-      console.log("[DEBUG] Starting joinRoom for room:", id);
       setLoading(true);
       setError(null);
 
       // Disconnect existing room if any
       if (room) {
-        console.log("[DEBUG] Disconnecting existing room...");
         try {
           await room.disconnect();
         } catch (e) {
-          console.warn("[DEBUG] Error disconnecting existing room:", e);
+          // Error disconnecting existing room
         }
       }
 
@@ -129,17 +125,14 @@ export default function ZoomCallPage() {
       
       if (session?.accessToken) {
         token = session.accessToken as string;
-        console.log("[DEBUG] Using token from NextAuth session");
         // Save to localStorage for API client
         if (session.refreshToken) {
           TokenManager.setTokens(token, session.refreshToken as string);
         }
       } else {
         token = TokenManager.getAccessToken();
-        console.log("[DEBUG] Using token from localStorage");
       }
       
-      console.log("[DEBUG] Access token exists:", !!token);
       if (!token) {
         throw new Error("No access token found. Please login again.");
       }
@@ -148,27 +141,18 @@ export default function ZoomCallPage() {
       api.setAccessToken(token);
 
       // Get join token from backend
-      console.log("[DEBUG] Calling API joinRoom...");
       const data = await api.joinRoom(id) as JoinRoomResponse;
-      console.log("[DEBUG] Join room response received:", { 
-        hasToken: !!data.token, 
-        url: data.url,
-        roomId: data.room?.id 
-      });
 
       // Connect to LiveKit room
-      console.log("[DEBUG] Creating Room instance...");
       const newRoom = new Room({
         adaptiveStream: true,
         dynacast: true,
       });
 
       // Set up event listeners
-      console.log("[DEBUG] Setting up room listeners...");
       
       // Participant connected
       newRoom.on(RoomEvent.ParticipantConnected, (participant) => {
-        console.log("Participant connected:", participant.identity);
         setParticipants((prev) => {
           const newMap = new Map(prev);
           newMap.set(participant.identity, participant);
@@ -178,7 +162,6 @@ export default function ZoomCallPage() {
 
       // Participant disconnected
       newRoom.on(RoomEvent.ParticipantDisconnected, (participant) => {
-        console.log("Participant disconnected:", participant.identity);
         setParticipants((prev) => {
           const newMap = new Map(prev);
           newMap.delete(participant.identity);
@@ -201,7 +184,6 @@ export default function ZoomCallPage() {
 
       // Track subscribed
       newRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        console.log("Track subscribed:", track.kind, participant.identity);
         attachTrack(track, participant);
         
         // Update participants map if not already there
@@ -218,17 +200,14 @@ export default function ZoomCallPage() {
 
       // Local track published
       newRoom.on(RoomEvent.LocalTrackPublished, (publication) => {
-        console.log("Local track published:", publication.kind, publication.source);
         if (publication.kind === "video" && publication.track) {
           if (publication.source === Track.Source.ScreenShare) {
             // Handle screen share - only attach if not already attached via srcObject
-            console.log("[DEBUG] Screen share track published");
             if (localScreenShareRef.current && !localScreenShareRef.current.srcObject) {
               try {
                 publication.track.attach(localScreenShareRef.current);
-                console.log("[DEBUG] Screen share track attached via LiveKit attach()");
               } catch (err) {
-                console.error("[DEBUG] Error attaching screen share track:", err);
+                // Error attaching screen share track
               }
             }
             setIsScreenSharing(true);
@@ -246,7 +225,6 @@ export default function ZoomCallPage() {
 
       // Local track unpublished
       newRoom.on(RoomEvent.LocalTrackUnpublished, (publication) => {
-        console.log("Local track unpublished:", publication.kind, publication.source);
         // Update state based on actual LiveKit state
         setIsMicMuted(!newRoom.localParticipant.isMicrophoneEnabled);
         setIsCameraOff(!newRoom.localParticipant.isCameraEnabled);
@@ -284,20 +262,16 @@ export default function ZoomCallPage() {
       // Status is checked directly from participant in render, no need for event handlers
 
       // Connect to room
-      console.log("[DEBUG] Connecting to LiveKit:", { url: data.url, hasToken: !!data.token });
       await newRoom.connect(data.url, data.token);
-      console.log("[DEBUG] Successfully connected to LiveKit room");
       
       // Get existing participants in the room
       const existingParticipants = new Map<string, RemoteParticipant>();
       newRoom.remoteParticipants.forEach((participant) => {
-        console.log("[DEBUG] Found existing participant:", participant.identity);
         existingParticipants.set(participant.identity, participant);
         
         // Attach existing tracks
         participant.trackPublications.forEach((publication) => {
           if (publication.track) {
-            console.log("[DEBUG] Attaching existing track:", publication.kind, participant.identity);
             attachTrack(publication.track, participant);
           }
         });
@@ -314,9 +288,7 @@ export default function ZoomCallPage() {
         // Update state based on actual LiveKit state
         setIsMicMuted(!newRoom.localParticipant.isMicrophoneEnabled);
         setIsCameraOff(!newRoom.localParticipant.isCameraEnabled);
-        console.log("[DEBUG] Camera and microphone enabled");
       } catch (err: any) {
-        console.warn("[DEBUG] Could not enable camera/microphone:", err);
         // Don't show error toast, just continue without camera/mic
         // Update state based on actual LiveKit state
         setIsMicMuted(!newRoom.localParticipant.isMicrophoneEnabled);
@@ -324,12 +296,6 @@ export default function ZoomCallPage() {
         // User can manually enable later
       }
     } catch (err: any) {
-      console.error("[ERROR] Error joining room:", err);
-      console.error("[ERROR] Error details:", {
-        message: err.message,
-        stack: err.stack,
-        response: err.response,
-      });
       const errorMessage = err.message || err.response?.data?.message || "Gagal bergabung ke room";
       setError(errorMessage);
       setLoading(false);
@@ -344,7 +310,6 @@ export default function ZoomCallPage() {
       // Don't redirect automatically, let user see the error
       // Only redirect if it's an auth error
       if (err.response?.status === 401 || err.message?.includes("token") || err.message?.includes("authenticated")) {
-        console.log("[DEBUG] Auth error detected, redirecting to login...");
         setTimeout(() => {
           router.push("/auth/login");
         }, 2000);
@@ -377,22 +342,17 @@ export default function ZoomCallPage() {
   }, [room]);
 
   useEffect(() => {
-    console.log("[DEBUG] useEffect triggered, roomId:", roomId, "session status:", status);
-    
     // Wait for session to load
     if (status === "loading") {
-      console.log("[DEBUG] Session loading, waiting...");
       return;
     }
 
     if (!roomId || typeof roomId !== "string") {
-      console.log("[DEBUG] Invalid roomId, waiting...");
       return;
     }
 
     // Prevent multiple joins
     if (hasJoinedRef.current || isJoiningRef.current) {
-      console.log("[DEBUG] Already joined or joining, skipping...");
       return;
     }
 
@@ -401,33 +361,26 @@ export default function ZoomCallPage() {
     
     if (session?.accessToken) {
       token = session.accessToken as string;
-      console.log("[DEBUG] Token from NextAuth session");
       // Also save to localStorage for API client
       if (session.refreshToken) {
         TokenManager.setTokens(token, session.refreshToken as string);
       }
     } else {
       token = TokenManager.getAccessToken();
-      console.log("[DEBUG] Token from localStorage");
     }
-
-    console.log("[DEBUG] Token check:", { hasToken: !!token, roomId, hasSession: !!session });
     
     if (!token) {
-      console.log("[DEBUG] No token found, redirecting to login");
       router.push("/auth/login?callbackUrl=" + encodeURIComponent(`/zoom/${roomId}`));
       return;
     }
 
-    console.log("[DEBUG] Setting access token and joining room");
     api.setAccessToken(token);
     joinRoom(roomId);
 
     return () => {
       // Cleanup on unmount
       if (room && room.state === "connected") {
-        console.log("[DEBUG] Cleaning up room on unmount");
-        room.disconnect().catch(console.error);
+        room.disconnect().catch(() => {});
       }
       hasJoinedRef.current = false;
       isJoiningRef.current = false;
@@ -442,17 +395,12 @@ export default function ZoomCallPage() {
       const currentlyEnabled = room.localParticipant.isMicrophoneEnabled;
       const newEnabledState = !currentlyEnabled;
       
-      console.log("[DEBUG] Toggling mic:", { currentlyEnabled, newEnabledState });
-      
       // Toggle microphone
       await room.localParticipant.setMicrophoneEnabled(newEnabledState);
       
       // Update state based on actual LiveKit state after toggle
       setIsMicMuted(!room.localParticipant.isMicrophoneEnabled);
-      
-      console.log("[DEBUG] Mic state after toggle:", room.localParticipant.isMicrophoneEnabled);
     } catch (err: any) {
-      console.error("Error toggling microphone:", err);
       
       // Update state based on actual LiveKit state (might not have changed)
       if (room) {
@@ -484,8 +432,6 @@ export default function ZoomCallPage() {
       const currentlyEnabled = room.localParticipant.isCameraEnabled;
       const newEnabledState = !currentlyEnabled;
       
-      console.log("[DEBUG] Toggling camera:", { currentlyEnabled, newEnabledState });
-      
       // Toggle camera
       await room.localParticipant.setCameraEnabled(newEnabledState);
       
@@ -502,10 +448,7 @@ export default function ZoomCallPage() {
         // Clear video element when camera is off
         localVideoRef.current.srcObject = null;
       }
-      
-      console.log("[DEBUG] Camera state after toggle:", room.localParticipant.isCameraEnabled);
     } catch (err: any) {
-      console.error("Error toggling camera:", err);
       
       // Update state based on actual LiveKit state (might not have changed)
       if (room) {
@@ -549,8 +492,6 @@ export default function ZoomCallPage() {
       // Determine new facing mode
       const newFacingMode = facingMode === "user" ? "environment" : "user";
       
-      console.log("[DEBUG] Switching camera from", facingMode, "to", newFacingMode);
-      
       // Get the current video track
       const currentVideoPublication = room.localParticipant.getTrackPublication(Track.Source.Camera);
       
@@ -585,15 +526,11 @@ export default function ZoomCallPage() {
       setFacingMode(newFacingMode);
       setIsCameraOff(false);
       
-      console.log("[DEBUG] Camera switched to", newFacingMode);
-      
       toast({
         title: "Kamera Diubah",
         description: newFacingMode === "user" ? "Kamera depan aktif" : "Kamera belakang aktif",
       });
     } catch (err: any) {
-      console.error("Error switching camera:", err);
-      
       // If exact facingMode fails, try without exact constraint
       if (err.name === "OverconstrainedError") {
         try {
@@ -625,7 +562,6 @@ export default function ZoomCallPage() {
             description: newFacingMode === "user" ? "Kamera depan aktif" : "Kamera belakang aktif",
           });
         } catch (fallbackErr: any) {
-          console.error("Fallback camera switch failed:", fallbackErr);
           toast({
             title: "Tidak Dapat Mengganti Kamera",
             description: "Perangkat tidak mendukung switch kamera",
@@ -636,7 +572,7 @@ export default function ZoomCallPage() {
           try {
             await room.localParticipant.setCameraEnabled(true);
           } catch (e) {
-            console.error("Failed to re-enable camera:", e);
+            // Failed to re-enable camera
           }
         }
       } else {
@@ -650,7 +586,7 @@ export default function ZoomCallPage() {
         try {
           await room.localParticipant.setCameraEnabled(true);
         } catch (e) {
-          console.error("Failed to re-enable camera:", e);
+          // Failed to re-enable camera
         }
       }
     } finally {
@@ -665,7 +601,6 @@ export default function ZoomCallPage() {
     try {
       if (isScreenSharing) {
         // Stop screen sharing
-        console.log("[DEBUG] Stopping screen share");
         
         // Unpublish screen share track
         const screenSharePublication = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
@@ -699,7 +634,6 @@ export default function ZoomCallPage() {
         });
       } else {
         // Start screen sharing
-        console.log("[DEBUG] Starting screen share");
 
         // Request screen share
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -718,7 +652,6 @@ export default function ZoomCallPage() {
 
         // Handle track ended (user stops sharing from browser)
         videoTrack.onended = () => {
-          console.log("[DEBUG] Screen share track ended by user");
           // Clean up state
           setIsScreenSharing(false);
           setScreenShareTrack(null);
@@ -728,7 +661,7 @@ export default function ZoomCallPage() {
           // Unpublish from room
           const screenSharePublication = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
           if (screenSharePublication?.track) {
-            room.localParticipant.unpublishTrack(screenSharePublication.track).catch(console.error);
+            room.localParticipant.unpublishTrack(screenSharePublication.track).catch(() => {});
           }
         };
 
@@ -739,7 +672,6 @@ export default function ZoomCallPage() {
         // Attach stream to local video element immediately
         if (localScreenShareRef.current) {
           localScreenShareRef.current.srcObject = screenStream;
-          console.log("[DEBUG] Screen share stream attached to local element");
         }
 
         // Publish screen share track to room
@@ -747,8 +679,6 @@ export default function ZoomCallPage() {
           name: "screen-share",
           source: Track.Source.ScreenShare,
         });
-        
-        console.log("[DEBUG] Screen share track published to room");
 
         toast({
           title: "Screen Share Dimulai",
@@ -756,8 +686,6 @@ export default function ZoomCallPage() {
         });
       }
     } catch (err: any) {
-      console.error("Error toggling screen share:", err);
-
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
         toast({
           title: "Izin Diperlukan",
@@ -795,7 +723,7 @@ export default function ZoomCallPage() {
               await room.localParticipant.unpublishTrack(publication.track);
             }
           } catch (err) {
-            console.error("Error unpublishing track:", err);
+            // Error unpublishing track
           }
         }
 
@@ -809,7 +737,7 @@ export default function ZoomCallPage() {
         // Disconnect from room
         await room.disconnect();
       } catch (err) {
-        console.error("Error during disconnect:", err);
+        // Error during disconnect
       } finally {
         setRoom(null);
         hasJoinedRef.current = false;
@@ -822,7 +750,6 @@ export default function ZoomCallPage() {
       try {
         await api.leaveRoom(roomId);
       } catch (err: any) {
-        console.error("Error leaving room via API:", err);
         // Continue even if API call fails
       }
     }
@@ -873,7 +800,6 @@ export default function ZoomCallPage() {
             </Button>
             <Button 
               onClick={() => {
-                console.log("[DEBUG] Retry button clicked");
                 setError(null);
                 setLoading(true);
                 if (roomId && typeof roomId === "string") {

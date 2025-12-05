@@ -8,11 +8,6 @@ function getKolosalApiKey(): string {
   const apiKey = process.env.KOLOSAL_API_KEY;
   
   if (!apiKey) {
-    // Log available env vars for debugging
-    const envKeys = Object.keys(process.env || {}).filter(key => 
-      key.includes('KOLOSAL') || key.includes('API')
-    );
-    console.error("Chat: KOLOSAL_API_KEY not found. Available env keys:", envKeys);
     throw new Error("KOLOSAL_API_KEY environment variable is not set");
   }
   
@@ -91,7 +86,6 @@ export default async function handler(
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Chat API error:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error",

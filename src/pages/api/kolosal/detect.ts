@@ -8,11 +8,6 @@ function getKolosalApiKey(): string {
   const apiKey = process.env.KOLOSAL_API_KEY;
   
   if (!apiKey) {
-    // Log available env vars for debugging
-    const envKeys = Object.keys(process.env || {}).filter(key => 
-      key.includes('KOLOSAL') || key.includes('API')
-    );
-    console.error("Detect: KOLOSAL_API_KEY not found. Available env keys:", envKeys);
     throw new Error("KOLOSAL_API_KEY environment variable is not set");
   }
   
@@ -87,7 +82,6 @@ export default async function handler(
         return res.status(400).json({ error: "Invalid action" });
     }
   } catch (error) {
-    console.error("Detect API error:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -120,7 +114,6 @@ async function handleCache(req: NextApiRequest, res: NextApiResponse, apiKey: st
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Cache error:", error);
     return res.status(500).json({
       error: "Failed to get cache",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -153,7 +146,6 @@ async function handleCacheDelete(req: NextApiRequest, res: NextApiResponse, apiK
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Cache delete error:", error);
     return res.status(500).json({
       error: "Failed to delete cache",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -189,7 +181,6 @@ async function handleHealth(req: NextApiRequest, res: NextApiResponse, apiKey: s
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Health error:", error);
     return res.status(500).json({
       error: "Failed to get health",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -225,7 +216,6 @@ async function handleStats(req: NextApiRequest, res: NextApiResponse, apiKey: st
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Stats error:", error);
     return res.status(500).json({
       error: "Failed to get stats",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -238,10 +228,6 @@ async function handleSegmentBase64(req: NextApiRequest, res: NextApiResponse, ap
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
-  console.log("Detect Segment - Content-Type:", req.headers["content-type"]);
-  console.log("Detect Segment - Body type:", typeof req.body);
-  console.log("Detect Segment - Has image:", !!req.body?.image);
 
   // Handle body parsing - in production, body might not be parsed correctly
   let bodyData: {
@@ -256,14 +242,12 @@ async function handleSegmentBase64(req: NextApiRequest, res: NextApiResponse, ap
     if (req.body && typeof req.body === "object" && Object.keys(req.body).length > 0) {
       bodyData = req.body;
     } else {
-      console.error("Detect Segment: Body parser may have failed, body is empty or invalid");
       return res.status(400).json({
         error: "Invalid request body",
         message: "Request body is empty or could not be parsed.",
       });
     }
   } catch (error) {
-    console.error("Detect Segment: Error parsing body:", error);
     return res.status(400).json({
       error: "Invalid request body",
       message: "Failed to parse request body.",
@@ -380,8 +364,6 @@ async function handleSegmentBase64(req: NextApiRequest, res: NextApiResponse, ap
     
     for (const endpoint of endpoints) {
       try {
-        console.log("Detect Segment: Trying endpoint:", endpoint, "image length:", processedImage.length);
-        
         // Try both formats: pure base64 and data URL
         const requestBodies = [
           {
@@ -402,8 +384,6 @@ async function handleSegmentBase64(req: NextApiRequest, res: NextApiResponse, ap
         
         for (const requestBody of requestBodies) {
           try {
-            console.log("Detect Segment: Trying format:", requestBody.image.startsWith("data:") ? "data URL" : "pure base64");
-            
             const { statusCode, body } = await request(endpoint, {
               method: "POST",
               headers: {
@@ -414,51 +394,40 @@ async function handleSegmentBase64(req: NextApiRequest, res: NextApiResponse, ap
             });
 
             const responseData = await safeJsonParse(body);
-            
-            console.log("Detect Segment: Endpoint:", endpoint);
-            console.log("Detect Segment: Response status:", statusCode);
-            console.log("Detect Segment: Response data:", JSON.stringify(responseData).substring(0, 200));
 
             if (statusCode === 200) {
-              console.log("Detect Segment: Success with endpoint:", endpoint);
               return res.status(200).json(responseData);
             }
             
             // If 403 or 404, try next format or endpoint
             if (statusCode === 403 || statusCode === 404) {
-              console.log("Detect Segment: Format failed with", statusCode, "trying next...");
               lastError = responseData;
               lastResponse = { statusCode, responseData };
               continue;
             }
             
             // For other errors, return immediately
-            console.error("Detect Segment: Kolosal API error:", responseData);
             return res.status(statusCode).json({
               error: "Failed to segment image",
               details: responseData,
             });
           } catch (formatError) {
-            console.error("Detect Segment: Format error:", formatError);
             lastError = formatError;
             continue;
           }
         }
       } catch (endpointError) {
-        console.error("Detect Segment: Endpoint error for", endpoint, ":", endpointError);
         lastError = endpointError;
         continue;
       }
     }
     
     // If all endpoints failed
-    console.error("Detect Segment: All endpoints failed");
     return res.status(lastResponse?.statusCode || 500).json({
       error: "Failed to segment image",
       details: lastError || { error: "All endpoints failed" },
     });
   } catch (error) {
-    console.error("Segment error:", error);
     return res.status(500).json({
       error: "Failed to segment image",
       message: error instanceof Error ? error.message : "Unknown error",

@@ -8,11 +8,6 @@ function getKolosalApiKey(): string {
   const apiKey = process.env.KOLOSAL_API_KEY;
   
   if (!apiKey) {
-    // Log available env vars for debugging (without exposing sensitive data)
-    const envKeys = Object.keys(process.env || {}).filter(key => 
-      key.includes('KOLOSAL') || key.includes('API')
-    );
-    console.error("Agent: KOLOSAL_API_KEY not found. Available env keys:", envKeys);
     throw new Error("KOLOSAL_API_KEY environment variable is not set");
   }
   
@@ -71,7 +66,6 @@ export default async function handler(
         return res.status(400).json({ error: "Invalid action" });
     }
   } catch (error) {
-    console.error("Agent API error:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -123,7 +117,6 @@ async function handleGenerate(req: NextApiRequest, res: NextApiResponse, apiKey:
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Generate error:", error);
     return res.status(500).json({
       error: "Failed to generate",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -155,7 +148,6 @@ async function handleStats(req: NextApiRequest, res: NextApiResponse, apiKey: st
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Stats error:", error);
     return res.status(500).json({
       error: "Failed to get stats",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -188,7 +180,6 @@ async function handleTools(req: NextApiRequest, res: NextApiResponse, apiKey: st
       tools: responseData.tools || [],
     });
   } catch (error) {
-    console.error("Tools error:", error);
     // Return empty tools array on error
     return res.status(200).json({ tools: [] });
   }

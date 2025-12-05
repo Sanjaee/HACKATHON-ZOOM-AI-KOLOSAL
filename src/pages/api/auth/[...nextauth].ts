@@ -25,7 +25,6 @@ export const authOptions: NextAuthOptions = {
               // Decode JWT token to get user info (no need to call API)
               const tokenParts = credentials.accessToken.split('.');
               if (tokenParts.length !== 3) {
-                console.error("Invalid JWT token format");
                 return null;
               }
 
@@ -66,8 +65,6 @@ export const authOptions: NextAuthOptions = {
                 loginType: "credential",
               };
             } catch (error) {
-              console.error("Token validation failed:", error);
-              console.error("Error details:", error instanceof Error ? error.message : String(error));
               return null;
             }
           }
@@ -112,8 +109,6 @@ export const authOptions: NextAuthOptions = {
             loginType: authResponse.user.login_type,
           };
         } catch (error) {
-          console.error("Authentication error:", error);
-
           // Check if it's a specific error from our backend and throw it
           if (error instanceof Error) {
             // Pass through the specific error message from our backend
@@ -148,8 +143,6 @@ export const authOptions: NextAuthOptions = {
 
           return true;
         } catch (error) {
-          console.error("Google OAuth error:", error);
-
           // Check if it's a specific error from our backend
           if (error instanceof Error) {
             // Map error messages for toast display
@@ -209,7 +202,6 @@ export const authOptions: NextAuthOptions = {
             }
           }
         } catch (error) {
-          console.error("Failed to fetch updated user data:", error);
           // Continue with existing token if fetch fails
         }
       }
@@ -258,7 +250,7 @@ export const authOptions: NextAuthOptions = {
     maxAge: 7 * 24 * 60 * 60, // 7 days
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === "development",
+  debug: false,
 };
 
 async function refreshAccessToken(token: {
@@ -294,7 +286,6 @@ async function refreshAccessToken(token: {
       image: refreshedTokens.user?.profile_photo || token.image || "",
     };
   } catch (error) {
-    console.error("Error refreshing access token:", error);
     return {
       ...token,
       error: "RefreshAccessTokenError",
