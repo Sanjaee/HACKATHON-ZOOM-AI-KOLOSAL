@@ -15,6 +15,8 @@ interface ChatMessage {
   user_email: string;
   message: string;
   created_at: string;
+  is_ai?: boolean;
+  is_streaming?: boolean;
 }
 
 interface ChatSidebarProps {
@@ -52,6 +54,9 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isConnectingRef = useRef(false);
+  const hasFetchedMessagesRef = useRef(false);
   
   // Get userId from database via JWT token (not from session.user.id which is Google ID)
   const databaseUserId = getUserIdFromToken(session?.accessToken as string) || getUserIdFromToken(api.getAccessToken()) || userId;
@@ -61,6 +66,11 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   };
 
   const fetchMessages = useCallback(async () => {
+    // Prevent multiple simultaneous fetches
+    if (loading) {
+      return;
+    }
+
     try {
       setLoading(true);
       const token = api.getAccessToken();
@@ -84,24 +94,52 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
 
       const data = await response.json();
       setMessages(data.data || []);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Gagal memuat pesan",
-        variant: "destructive",
+    } catch (err: any) {
+      console.error("[Chat] Error fetching messages:", err);
+      // Don't show toast for every error to avoid spam
+      setMessages((prev) => {
+        if (prev.length === 0) {
+          toast({
+            title: "Error",
+            description: "Gagal memuat pesan",
+            variant: "destructive",
+          });
+        }
+        return prev;
       });
     } finally {
       setLoading(false);
     }
-  }, [roomId]);
+  }, [roomId, loading]);
 
   const connectWebSocket = useCallback(() => {
-    if (!roomId || !userId) return;
+    // Prevent multiple simultaneous connections
+    if (isConnectingRef.current || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+      return;
+    }
+
+    if (!roomId || !userId || !isOpen) {
+      return;
+    }
 
     const token = api.getAccessToken();
     if (!token) {
       return;
     }
+
+    // Check if token is expired
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const exp = payload.exp * 1000; // Convert to milliseconds
+      if (Date.now() >= exp) {
+        console.log("[Chat] Token expired, not connecting WebSocket");
+        return;
+      }
+    } catch (error) {
+      // If can't parse token, continue anyway
+    }
+
+    isConnectingRef.current = true;
 
     // Use API_BASE_URL for WebSocket (works with both development and production)
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -120,11 +158,22 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
     }
 
     try {
+      // Close existing connection if any
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // WebSocket connected
+        isConnectingRef.current = false;
+        // Clear any pending reconnect
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
       };
 
       ws.onmessage = (event) => {
@@ -138,6 +187,47 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
               if (exists) return prev;
               return [...prev, message.payload];
             });
+          } else if (message.type === "ai_typing" && message.payload) {
+            // Add AI typing indicator
+            setMessages((prev: ChatMessage[]) => {
+              const exists = prev.some((m) => m.id === message.payload.id);
+              if (exists) return prev;
+              return [...prev, { ...message.payload, is_ai: true, is_streaming: true }];
+            });
+          } else if (message.type === "ai_stream" && message.payload) {
+            // Update streaming AI message
+            setMessages((prev: ChatMessage[]) => {
+              return prev.map((m) => {
+                if (m.id === message.payload.id) {
+                  return { ...message.payload, is_ai: true, is_streaming: true };
+                }
+                return m;
+              });
+            });
+          } else if (message.type === "ai_complete" && message.payload) {
+            // Mark AI message as complete
+            setMessages((prev: ChatMessage[]) => {
+              return prev.map((m) => {
+                if (m.id === message.payload.id) {
+                  return { ...message.payload, is_ai: true, is_streaming: false };
+                }
+                return m;
+              });
+            });
+          } else if (message.type === "ai_error" && message.payload) {
+            // Show AI error message
+            setMessages((prev: ChatMessage[]) => {
+              const exists = prev.some((m) => m.id === message.payload.id);
+              if (exists) {
+                return prev.map((m) => {
+                  if (m.id === message.payload.id) {
+                    return { ...message.payload, is_ai: true, is_streaming: false };
+                  }
+                  return m;
+                });
+              }
+              return [...prev, { ...message.payload, is_ai: true, is_streaming: false }];
+            });
           }
         } catch (error) {
           // Error parsing WebSocket message
@@ -145,35 +235,104 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       };
 
       ws.onerror = (error) => {
-        // WebSocket error
+        isConnectingRef.current = false;
+        // WebSocket error - don't reconnect immediately, wait for onclose
       };
 
       ws.onclose = (event) => {
-        // Reconnect after 3 seconds
-        setTimeout(() => {
-          if (isOpen) {
-            connectWebSocket();
+        isConnectingRef.current = false;
+        
+        // Don't reconnect if:
+        // 1. Chat is closed
+        // 2. Close code indicates authentication error (4001, 4003, 1008)
+        // 3. Already have a pending reconnect
+        if (!isOpen) {
+          return;
+        }
+
+        // Check if it's an auth error (401)
+        if (event.code === 1008 || event.code === 4001 || event.code === 4003) {
+          console.log("[Chat] WebSocket closed due to auth error, not reconnecting");
+          return;
+        }
+
+        // Only reconnect if connection was established before (normal close)
+        // Don't reconnect if it was never opened (connection failed)
+        if (event.code === 1000 || event.code === 1001) {
+          // Normal closure or going away - reconnect after delay
+          if (!reconnectTimeoutRef.current) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectTimeoutRef.current = null;
+              if (isOpen && roomId && userId) {
+                connectWebSocket();
+              }
+            }, 5000); // Increased to 5 seconds to reduce polling
           }
-        }, 3000);
+        }
       };
     } catch (error) {
+      isConnectingRef.current = false;
       // Error connecting WebSocket
     }
   }, [roomId, userId, isOpen]);
 
-  useEffect(() => {
-    if (isOpen && roomId) {
-      fetchMessages();
-      connectWebSocket();
-    }
+  // Track previous roomId to detect changes
+  const prevRoomIdRef = useRef<string | undefined>(undefined);
 
-    return () => {
+  useEffect(() => {
+    const prevRoomId = prevRoomIdRef.current;
+    const currentRoomId = roomId;
+    
+    // Reset fetch flag and close WebSocket if roomId changed
+    if (prevRoomId !== undefined && prevRoomId !== currentRoomId) {
+      hasFetchedMessagesRef.current = false;
+      // Close existing WebSocket when roomId changes
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
+      // Clear reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+    }
+    
+    // Update ref
+    prevRoomIdRef.current = currentRoomId;
+
+    if (isOpen && roomId) {
+      // Only fetch messages once when chat opens or roomId changes
+      if (!hasFetchedMessagesRef.current) {
+        fetchMessages();
+        hasFetchedMessagesRef.current = true;
+      }
+      
+      // Connect WebSocket only if not already connected
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        connectWebSocket();
+      }
+    } else {
+      // Reset flag when chat closes
+      hasFetchedMessagesRef.current = false;
+    }
+
+    return () => {
+      // Clear reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      // Close WebSocket when chat closes (not when roomId changes, handled above)
+      if (!isOpen && wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      isConnectingRef.current = false;
     };
-  }, [isOpen, roomId, fetchMessages, connectWebSocket]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, roomId]); // fetchMessages and connectWebSocket are stable callbacks, no need to include
 
   useEffect(() => {
     scrollToBottom();
@@ -182,31 +341,57 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   const handleSendMessage = async () => {
     if (!newMessage.trim() || sending) return;
 
+    const messageToSend = newMessage.trim();
+    console.log("[ChatSidebar] Sending message:", messageToSend);
+    console.log("[ChatSidebar] Contains @agen:", messageToSend.toLowerCase().includes("@agen"));
+
     try {
       setSending(true);
       const token = api.getAccessToken();
       
+      if (!token) {
+        console.error("[ChatSidebar] ERROR: No access token");
+        toast({
+          title: "Error",
+          description: "Token tidak ditemukan. Silakan login ulang.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       // Use API_BASE_URL from environment or fallback to current host
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
       const apiUrl = API_BASE_URL || window.location.origin;
+      const url = `${apiUrl}/api/v1/rooms/${roomId}/messages`;
       
-      const fetchResponse = await fetch(`${apiUrl}/api/v1/rooms/${roomId}/messages`, {
+      console.log("[ChatSidebar] POST URL:", url);
+      console.log("[ChatSidebar] Request body:", { message: messageToSend });
+      
+      const fetchResponse = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: newMessage.trim() }),
+        body: JSON.stringify({ message: messageToSend }),
       });
 
+      console.log("[ChatSidebar] Response status:", fetchResponse.status);
+      console.log("[ChatSidebar] Response ok:", fetchResponse.ok);
+
       if (!fetchResponse.ok) {
-        throw new Error("Failed to send message");
+        const errorText = await fetchResponse.text();
+        console.error("[ChatSidebar] Response error:", errorText);
+        throw new Error(`Failed to send message: ${fetchResponse.status} ${errorText}`);
       }
 
       const responseData = await fetchResponse.json();
+      console.log("[ChatSidebar] Response data:", responseData);
+      
       const messageData = responseData.data || responseData;
 
       if (messageData) {
+        console.log("[ChatSidebar] Message created:", messageData.id);
         setMessages((prev: ChatMessage[]) => {
           const exists = prev.some((m: ChatMessage) => m.id === messageData.id);
           if (exists) return prev;
@@ -215,7 +400,9 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       }
 
       setNewMessage("");
+      console.log("[ChatSidebar] Message sent successfully");
     } catch (error: any) {
+      console.error("[ChatSidebar] Error sending message:", error);
       toast({
         title: "Error",
         description: error.message || "Gagal mengirim pesan",
@@ -277,13 +464,45 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
               const messageUserId = String(msg.user_id || "").trim();
               const currentUser = String(databaseUserId || "").trim();
               const isOwnMessage = currentUser !== "" && currentUser === messageUserId;
+              const isAIMessage = msg.is_ai || msg.user_id === "ai-agent";
               
               return (
                 <div
                   key={msg.id}
                   className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"} mb-1`}
                 >
-                  {isOwnMessage ? (
+                  {isAIMessage ? (
+                    // PESAN AI - DI KIRI DENGAN STYLE KHUSUS
+                    <div className="flex gap-2 max-w-[85%]">
+                      {/* Avatar AI */}
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-xs text-white font-semibold">
+                        🤖
+                      </div>
+                      
+                      {/* Container pesan AI */}
+                      <div className="flex flex-col items-start">
+                        {/* Nama AI */}
+                        <span className="text-xs text-purple-400 mb-1 px-1 font-semibold">
+                          {msg.user_name || "AI Agent"}
+                        </span>
+                        
+                        {/* Bubble pesan AI - GRADIENT */}
+                        <div className="rounded-2xl px-4 py-2 shadow-lg bg-gradient-to-r from-purple-600/80 to-pink-600/80 text-white rounded-tl-md">
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
+                            {msg.message}
+                            {msg.is_streaming && (
+                              <span className="inline-block w-2 h-2 bg-white rounded-full ml-1 animate-pulse" />
+                            )}
+                          </p>
+                        </div>
+                        
+                        {/* Waktu */}
+                        <span className="text-xs text-gray-500 mt-0.5 px-1">
+                          {formatTime(msg.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : isOwnMessage ? (
                     // PESAN SENDIRI - DI KANAN
                     <div className="flex flex-col items-end max-w-[85%]">
                       {/* Bubble pesan sendiri - BIRU di KANAN */}
