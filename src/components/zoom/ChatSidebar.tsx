@@ -437,17 +437,17 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
           return;
         }
 
-        // Set AI streaming status
-        setAiStreaming(true);
-        setStreamingUserId(databaseUserId);
+        // DON'T set AI streaming status here - wait for WebSocket ai_typing message
+        // Backend will broadcast ai_typing via WebSocket which will disable input for all users
 
         try {
           // Call test Kolosal API endpoint via HTTP
+          // Backend will handle realtime streaming via WebSocket broadcasts
           const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
           const apiUrl = API_BASE_URL || window.location.origin;
           const url = `${apiUrl}/api/v1/rooms/${roomId}/test-kolosal`;
           
-          console.log("[ChatSidebar] Testing Kolosal API via HTTP:", url);
+          console.log("[ChatSidebar] Requesting AI via HTTP (realtime via WebSocket):", url);
           console.log("[ChatSidebar] Prompt:", aiPrompt);
           
           const response = await fetch(url, {
@@ -468,32 +468,16 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             throw new Error(`Failed to call Kolosal API: ${response.status} ${errorText}`);
           }
 
-          const responseData = await response.json();
-          console.log("[ChatSidebar] Kolosal API response:", responseData);
+          await response.json(); // Response is not needed - WebSocket will handle streaming
+          console.log("[ChatSidebar] AI request sent successfully, waiting for WebSocket streaming...");
           
-          const aiResponse = responseData.data?.response || "No response from AI";
-          
-          // Add AI message to chat
-          const aiMessage: ChatMessage = {
-            id: `ai-${Date.now()}`,
-            room_id: roomId,
-            user_id: "ai-agent",
-            user_name: "AI Agent",
-            user_email: "ai@agent.com",
-            message: aiResponse,
-            created_at: new Date().toISOString(),
-            is_ai: true,
-            is_streaming: false,
-          };
-          
-          setMessages((prev: ChatMessage[]) => {
-            const exists = prev.some((m) => m.id === aiMessage.id);
-            if (exists) return prev;
-            return [...prev, aiMessage];
-          });
-          
+          // Clear input immediately - WebSocket will handle the rest
           setNewMessage("");
-          console.log("[ChatSidebar] AI response received successfully");
+          
+          // Note: AI message will be added/updated via WebSocket:
+          // 1. ai_typing -> disables input for all users
+          // 2. ai_stream -> updates streaming message for all users
+          // 3. ai_complete -> finalizes message and enables input again
         } catch (error: any) {
           console.error("[ChatSidebar] Error calling Kolosal API:", error);
           toast({
@@ -501,9 +485,10 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             description: error.message || "Gagal memanggil Kolosal API",
             variant: "destructive",
           });
-        } finally {
+          // Clear streaming status on error (in case WebSocket didn't send error)
           setAiStreaming(false);
           setStreamingUserId(null);
+        } finally {
           setSending(false);
         }
       } else {
