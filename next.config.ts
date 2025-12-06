@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
   reactStrictMode: true,
-  output: 'standalone',
+  // Removed 'standalone' output mode - not compatible with Vercel deployment
+  // Vercel uses its own optimized build process
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
@@ -17,15 +18,14 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.googleusercontent.com' },
     ],
   },
-  // Ensure API routes work correctly in standalone mode
+  // Ensure API routes work correctly
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
     },
   },
-  // For Next.js standalone mode, server-side env vars are available at runtime
-  // We don't need to expose KOLOSAL_API_KEY via env config since it's server-only
-  // The env var will be available via process.env.KOLOSAL_API_KEY at runtime
+  // Server-side env vars are available at runtime via process.env
+  // Make sure to set them in Vercel environment variables
 };
 
 export default nextConfig;
