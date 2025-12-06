@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
+import { Space_Grotesk, Outfit } from "next/font/google";
 import { api, TokenManager } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,25 @@ import { Label } from "@/components/ui/label";
 import Navbar from "@/components/general/Navbar";
 import { toast } from "@/hooks/use-toast";
 import { Video, Plus, Calendar, Copy, Check } from "lucide-react";
+
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space",
+  subsets: ["latin"],
+});
+
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+});
+
+// Generate particles for background
+const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
+  id: i,
+  left: (i * 17 + 13) % 100,
+  top: (i * 23 + 7) % 100,
+  duration: 3 + (i % 5),
+  delay: (i % 3) * 0.7,
+}));
 
 export default function ZoomRoomsPage() {
   const router = useRouter();
@@ -23,6 +43,20 @@ export default function ZoomRoomsPage() {
   const [creating, setCreating] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
 
   useEffect(() => {
     // Wait for session to load
@@ -159,29 +193,100 @@ export default function ZoomRoomsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
+    <div
+      className={`${spaceGrotesk.variable} ${outfit.variable} relative min-h-screen overflow-hidden bg-[#0a0a0f] font-sans`}
+    >
       <Navbar />
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 py-12">
+      
+      {/* Animated gradient background */}
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Primary gradient orbs */}
+        <div
+          className="absolute w-[800px] h-[800px] rounded-full opacity-30 blur-[120px] animate-pulse"
+          style={{
+            background: "radial-gradient(circle, #6366f1 0%, transparent 70%)",
+            left: `${mousePosition.x * 0.02}px`,
+            top: `${mousePosition.y * 0.02}px`,
+            transition: "all 0.3s ease-out",
+          }}
+        />
+        <div
+          className="absolute right-0 bottom-0 w-[600px] h-[600px] rounded-full opacity-25 blur-[100px]"
+          style={{
+            background: "radial-gradient(circle, #ec4899 0%, transparent 70%)",
+            animation: "float 8s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="absolute left-1/2 top-1/2 w-[500px] h-[500px] rounded-full opacity-20 blur-[80px]"
+          style={{
+            background: "radial-gradient(circle, #06b6d4 0%, transparent 70%)",
+            animation: "float 10s ease-in-out infinite reverse",
+          }}
+        />
+
+        {/* Grid overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: "100px 100px",
+          }}
+        />
+
+        {/* Floating particles */}
+        {PARTICLES.map((particle) => (
+          <div
+            key={particle.id}
+            className="absolute w-1 h-1 bg-white rounded-full opacity-20"
+            style={{
+              left: `${particle.left}%`,
+              top: `${particle.top}%`,
+              animation: `twinkle ${particle.duration}s ease-in-out infinite`,
+              animationDelay: `${particle.delay}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Main content */}
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 py-12">
         {/* Main Heading */}
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-normal text-gray-900 dark:text-white mb-4 text-center">
-          Rapat dan panggilan video untuk semua orang
+        <h1 className={`text-center text-5xl  lg:text-6xl font-bold tracking-tight mb-3 sm:mb-4 md:mb-5 font-[family-name:var(--font-outfit)] ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
+          <span className="bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
+            Meeting Profesional
+          </span>
+          <br />
+          <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            UMKM & Investor
+          </span>
         </h1>
         
         {/* Subtitle */}
-        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-400 mb-12 text-center max-w-2xl">
-          Terhubung, berkolaborasi, dan merayakan dari mana saja dengan Zoom Meeting AI Agent
+        <p className={`text-center text-sm sm:text-base md:text-lg text-gray-400 sm:max-w-md md:max-w-lg lg:max-w-2xl mb-6 sm:mb-8 md:mb-10 px-4 sm:px-0 leading-relaxed font-[family-name:var(--font-outfit)] ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          style={{ animationDelay: "0.2s", animationFillMode: "forwards" }}>
+          Terhubung, berkolaborasi, dan merayakan dari mana saja dengan{" "}
+          <span className="text-indigo-400 font-semibold">Zoom Meeting AI Agent</span>.
+          Platform meeting profesional untuk <span className="text-purple-400 font-semibold">UMKM</span> melakukan 
+          pertemuan dengan <span className="text-pink-400 font-semibold">investor</span>. Dapatkan transkrip, 
+          analisis, dan rekomendasi otomatis dari setiap pertemuan.
         </p>
 
         {/* Action Buttons */}
-        <div className="w-full max-w-2xl space-y-4 mb-8">
+        <div className={`w-full max-w-2xl space-y-3 sm:space-y-4 mb-6 sm:mb-8 ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          style={{ animationDelay: "0.3s", animationFillMode: "forwards" }}>
           {/* Create Room Button */}
           <div className="flex justify-center">
             <Button
               onClick={() => setCreateDialogOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-base font-medium rounded-lg shadow-sm"
+              className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white px-6 sm:px-8 py-4 sm:py-6 text-sm sm:text-base font-medium rounded-sm shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40 transition-all w-full "
               size="lg"
             >
-              <Plus className="mr-2 h-5 w-5" />
+              <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
               Rapat baru
             </Button>
           </div>
@@ -199,13 +304,17 @@ export default function ZoomRoomsPage() {
                     handleJoinRoom();
                   }
                 }}
-                className="pl-10 h-12 text-base border-gray-300 dark:border-gray-600"
+                className="pl-10 h-12 text-base bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:bg-white/15 focus:border-indigo-400"
               />
             </div>
             <Button
               onClick={handleJoinRoom}
               disabled={!joinRoomId.trim()}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-6 h-12 font-medium rounded-lg"
+              className={`px-6 h-12 font-medium rounded-lg transition-all ${
+                joinRoomId.trim()
+                  ? "bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40"
+                  : "bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-white/30 opacity-50 cursor-not-allowed"
+              }`}
             >
               Gabung
             </Button>
@@ -213,13 +322,14 @@ export default function ZoomRoomsPage() {
         </div>
 
         {/* Illustration Placeholder */}
-        <div className="w-full max-w-3xl mb-8">
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-12 text-center">
-            <Video className="h-24 w-24 mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
+        <div className={`w-full max-w-3xl mb-8 ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          style={{ animationDelay: "0.4s", animationFillMode: "forwards" }}>
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-12 text-center">
+            <Video className="h-24 w-24 mx-auto text-indigo-400 mb-4" />
+            <p className="text-gray-300 text-sm font-medium mb-2">
               Dapatkan link yang bisa Anda bagikan
             </p>
-            <p className="text-gray-500 dark:text-gray-500 text-xs mt-2">
+            <p className="text-gray-400 text-xs">
               Klik Rapat baru untuk dapatkan link yang bisa dikirim kepada orang yang ingin diajak rapat
             </p>
           </div>
@@ -228,48 +338,48 @@ export default function ZoomRoomsPage() {
 
       {/* Create Room Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] bg-white/10 backdrop-blur-xl border-white/20 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>Buat Rapat Baru</DialogTitle>
+            <DialogTitle className="text-white font-semibold text-xl">Buat Rapat Baru</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="name">Nama Rapat *</Label>
+              <Label htmlFor="name" className="text-gray-300 font-medium">Nama Rapat *</Label>
               <Input
                 id="name"
                 placeholder="Masukkan nama rapat"
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                className="mt-1"
+                className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:bg-white/15 focus:border-indigo-400 focus:ring-indigo-400/20"
               />
             </div>
             <div>
-              <Label htmlFor="description">Deskripsi</Label>
+              <Label htmlFor="description" className="text-gray-300 font-medium">Deskripsi</Label>
               <Textarea
                 id="description"
                 placeholder="Masukkan deskripsi (opsional)"
                 value={roomDescription}
                 onChange={(e) => setRoomDescription(e.target.value)}
-                className="mt-1"
+                className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:bg-white/15 focus:border-indigo-400 focus:ring-indigo-400/20 resize-none"
                 rows={3}
               />
             </div>
             <div>
-              <Label htmlFor="maxParticipants">Max Participants</Label>
+              <Label htmlFor="maxParticipants" className="text-gray-300 font-medium">Max Participants</Label>
               <Input
                 id="maxParticipants"
                 type="number"
                 placeholder="Tidak terbatas"
                 value={maxParticipants || ""}
                 onChange={(e) => setMaxParticipants(e.target.value ? parseInt(e.target.value) : undefined)}
-                className="mt-1"
+                className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:bg-white/15 focus:border-indigo-400 focus:ring-indigo-400/20"
                 min={1}
               />
             </div>
             <Button
               onClick={handleCreateRoom}
               disabled={creating}
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-medium shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creating ? "Membuat..." : "Buat Rapat"}
             </Button>
@@ -279,27 +389,27 @@ export default function ZoomRoomsPage() {
 
       {/* Room ID Dialog - Show after room creation */}
       <Dialog open={roomIdDialogOpen} onOpenChange={setRoomIdDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] bg-white/10 backdrop-blur-xl border-white/20 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>Rapat Berhasil Dibuat</DialogTitle>
+            <DialogTitle className="text-white font-semibold text-xl">Rapat Berhasil Dibuat</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>ID Room (Salin dan bagikan)</Label>
+              <Label className="text-gray-300 font-medium">ID Room (Salin dan bagikan)</Label>
               <div className="flex gap-2 mt-1">
                 <Input
                   value={createdRoomId}
                   readOnly
-                  className="flex-1 font-mono text-sm bg-gray-50 dark:bg-gray-800"
+                  className="flex-1 font-mono text-sm bg-white/10 border-white/20 text-white"
                 />
                 <Button
                   onClick={handleCopyRoomId}
                   variant="outline"
                   size="icon"
-                  className="shrink-0"
+                  className="shrink-0 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:border-white/30"
                 >
                   {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-green-400" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -309,7 +419,7 @@ export default function ZoomRoomsPage() {
             <div className="flex gap-2">
               <Button
                 onClick={handleEnterRoom}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-medium shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40 transition-all"
               >
                 <Video className="mr-2 h-4 w-4" />
                 Masuk Rapat
@@ -317,7 +427,7 @@ export default function ZoomRoomsPage() {
               <Button
                 onClick={() => setRoomIdDialogOpen(false)}
                 variant="outline"
-                className="flex-1"
+                className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:border-white/30"
               >
                 Tutup
               </Button>
