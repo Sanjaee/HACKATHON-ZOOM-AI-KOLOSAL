@@ -6,11 +6,11 @@ import type { Message, HistoryItem, Model, Workspace, AgentStats } from "@/utils
 
 export function useChatbot() {
   const [open, setOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hello! I'm your AI Agent. Select a workspace and tools to get started!",
+      content: "Halo! Saya AI Agent untuk membantu UMKM dalam meeting dengan investor. Saya dapat memberikan transkrip otomatis, analisis mendalam, dan rekomendasi strategis dari setiap pertemuan. Pilih mode dan model untuk memulai!",
     },
   ]);
   const [input, setInput] = useState("");
@@ -193,7 +193,7 @@ export function useChatbot() {
     setMessages([
       {
         role: "assistant",
-        content: "Chat cleared! How can I help you?",
+        content: "Chat dibersihkan! Saya siap membantu UMKM dalam meeting dengan investor. Bagaimana saya bisa membantu Anda hari ini?",
       },
     ]);
     setChatHistory([]);

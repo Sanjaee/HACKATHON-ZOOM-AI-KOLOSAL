@@ -2,27 +2,27 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import { api, TokenManager } from "@/lib/api";
-import type { Room } from "@/types/room";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import Navbar from "@/components/general/Navbar";
 import { toast } from "@/hooks/use-toast";
-import { Video, Plus, Users, Calendar, Trash2 } from "lucide-react";
+import { Video, Plus, Calendar, Copy, Check } from "lucide-react";
 
 export default function ZoomRoomsPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [roomIdDialogOpen, setRoomIdDialogOpen] = useState(false);
+  const [createdRoomId, setCreatedRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [roomDescription, setRoomDescription] = useState("");
   const [maxParticipants, setMaxParticipants] = useState<number | undefined>();
   const [creating, setCreating] = useState(false);
+  const [joinRoomId, setJoinRoomId] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     // Wait for session to load
@@ -51,48 +51,10 @@ export default function ZoomRoomsPage() {
 
     if (token) {
       api.setAccessToken(token);
-      fetchRooms();
     } else {
       router.push("/auth/login?callbackUrl=" + encodeURIComponent("/zoom"));
     }
   }, [session, status, router]);
-
-  const fetchRooms = async () => {
-    try {
-      setLoading(true);
-      
-      // Ensure token is set from session or localStorage
-      let token: string | null = null;
-      
-      if (session?.accessToken) {
-        token = session.accessToken as string;
-        // Save to localStorage for API client
-        if (session.refreshToken) {
-          TokenManager.setTokens(token, session.refreshToken as string);
-        }
-      } else {
-        token = TokenManager.getAccessToken();
-      }
-      
-      if (!token) {
-        router.push("/auth/login?callbackUrl=" + encodeURIComponent("/zoom"));
-        return;
-      }
-      
-      api.setAccessToken(token);
-      
-      const data = await api.getRooms() as Room[];
-      setRooms(Array.isArray(data) ? data : []);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal memuat rooms",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateRoom = async () => {
     if (!roomName.trim()) {
@@ -131,22 +93,30 @@ export default function ZoomRoomsPage() {
       
       api.setAccessToken(token);
       
-      const data = await api.createRoom({
+      const data: any = await api.createRoom({
         name: roomName,
         description: roomDescription || undefined,
         max_participants: maxParticipants || undefined,
       });
 
-      toast({
-        title: "Success",
-        description: "Room berhasil dibuat",
-      });
-
-      setCreateDialogOpen(false);
-      setRoomName("");
-      setRoomDescription("");
-      setMaxParticipants(undefined);
-      fetchRooms();
+      // Get room ID from response
+      const roomId = data?.data?.id || data?.id;
+      
+      if (roomId) {
+        setCreatedRoomId(roomId);
+        setCreateDialogOpen(false);
+        setRoomIdDialogOpen(true);
+        setRoomName("");
+        setRoomDescription("");
+        setMaxParticipants(undefined);
+        
+        toast({
+          title: "Success",
+          description: "Room berhasil dibuat",
+        });
+      } else {
+        throw new Error("Room ID tidak ditemukan dalam response");
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -158,205 +128,203 @@ export default function ZoomRoomsPage() {
     }
   };
 
-  const handleJoinRoom = (roomId: string) => {
-    router.push(`/zoom/${roomId}`);
-  };
-
-  const handleDeleteRoom = async (roomId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent card click event
-    
-    if (!confirm("Apakah Anda yakin ingin menghapus room ini?")) {
+  const handleJoinRoom = async () => {
+    if (!joinRoomId.trim()) {
+      toast({
+        title: "Error",
+        description: "Masukkan ID room terlebih dahulu",
+        variant: "destructive",
+      });
       return;
     }
 
-    try {
-      // Ensure token is set
-      let token: string | null = null;
-      
-      if (session?.accessToken) {
-        token = session.accessToken as string;
-        if (session.refreshToken) {
-          TokenManager.setTokens(token, session.refreshToken as string);
-        }
-      } else {
-        token = TokenManager.getAccessToken();
-      }
-      
-      if (!token) {
-        toast({
-          title: "Error",
-          description: "Anda harus login terlebih dahulu",
-          variant: "destructive",
-        });
-        router.push("/auth/login?callbackUrl=" + encodeURIComponent("/zoom"));
-        return;
-      }
-      
-      api.setAccessToken(token);
-      
-      await api.deleteRoom(roomId);
-      
+    router.push(`/zoom/${joinRoomId.trim()}`);
+  };
+
+  const handleCopyRoomId = () => {
+    if (createdRoomId) {
+      navigator.clipboard.writeText(createdRoomId);
+      setCopied(true);
       toast({
-        title: "Success",
-        description: "Room berhasil dihapus",
+        title: "Berhasil",
+        description: "ID room berhasil disalin",
       });
-      
-      // Refresh rooms list
-      fetchRooms();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal menghapus room",
-        variant: "destructive",
-      });
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
+  const handleEnterRoom = () => {
+    setRoomIdDialogOpen(false);
+    router.push(`/zoom/${createdRoomId}`);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen bg-white dark:bg-gray-900">
       <Navbar />
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-              Video Call Rooms
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Buat atau bergabung ke room video call
-            </p>
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 py-12">
+        {/* Main Heading */}
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-normal text-gray-900 dark:text-white mb-4 text-center">
+          Rapat dan panggilan video untuk semua orang
+        </h1>
+        
+        {/* Subtitle */}
+        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-400 mb-12 text-center max-w-2xl">
+          Terhubung, berkolaborasi, dan merayakan dari mana saja dengan Zoom Meeting AI Agent
+        </p>
+
+        {/* Action Buttons */}
+        <div className="w-full max-w-2xl space-y-4 mb-8">
+          {/* Create Room Button */}
+          <div className="flex justify-center">
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-base font-medium rounded-lg shadow-sm"
+              size="lg"
+            >
+              <Plus className="mr-2 h-5 w-5" />
+              Rapat baru
+            </Button>
           </div>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
-                <Plus className="mr-2 h-4 w-4" />
-                Buat Room
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Buat Room Baru</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div>
-                  <Label htmlFor="name">Nama Room *</Label>
-                  <Input
-                    id="name"
-                    placeholder="Masukkan nama room"
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="description">Deskripsi</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Masukkan deskripsi (opsional)"
-                    value={roomDescription}
-                    onChange={(e) => setRoomDescription(e.target.value)}
-                    className="mt-1"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="maxParticipants">Max Participants</Label>
-                  <Input
-                    id="maxParticipants"
-                    type="number"
-                    placeholder="Tidak terbatas"
-                    value={maxParticipants || ""}
-                    onChange={(e) => setMaxParticipants(e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="mt-1"
-                    min={1}
-                  />
-                </div>
-                <Button
-                  onClick={handleCreateRoom}
-                  disabled={creating}
-                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600"
-                >
-                  {creating ? "Membuat..." : "Buat Room"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+
+          {/* Join Room Input */}
+          <div className="flex gap-2 items-center">
+            <div className="flex-1 relative">
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Input
+                placeholder="Masukkan kode atau link"
+                value={joinRoomId}
+                onChange={(e) => setJoinRoomId(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    handleJoinRoom();
+                  }
+                }}
+                className="pl-10 h-12 text-base border-gray-300 dark:border-gray-600"
+              />
+            </div>
+            <Button
+              onClick={handleJoinRoom}
+              disabled={!joinRoomId.trim()}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-6 h-12 font-medium rounded-lg"
+            >
+              Gabung
+            </Button>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-            <p className="mt-4 text-gray-600 dark:text-gray-400">Memuat rooms...</p>
-          </div>
-        ) : rooms.length === 0 ? (
-          <Card className="p-12 text-center">
-            <Video className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Belum ada room
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Buat room pertama Anda untuk memulai video call
+        {/* Illustration Placeholder */}
+        <div className="w-full max-w-3xl mb-8">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-12 text-center">
+            <Video className="h-24 w-24 mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600 dark:text-gray-400 text-sm">
+              Dapatkan link yang bisa Anda bagikan
             </p>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {rooms.map((room) => (
-              <Card
-                key={room.id}
-                className="p-6 hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-purple-500"
-                onClick={() => handleJoinRoom(room.id)}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
-                      {room.name}
-                    </h3>
-                    {room.description && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                        {room.description}
-                      </p>
-                    )}
-                  </div>
-                  {session?.user?.id === room.created_by_id && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                      onClick={(e) => handleDeleteRoom(room.id, e)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <Users className="h-4 w-4 mr-2" />
-                    {room.participant_count} peserta
-                    {room.max_participants && ` / ${room.max_participants}`}
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    {new Date(room.created_at).toLocaleDateString("id-ID")}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Dibuat oleh: {room.created_by_name}
-                  </div>
-                </div>
-                <Button
-                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleJoinRoom(room.id);
-                  }}
-                >
-                  <Video className="mr-2 h-4 w-4" />
-                  Gabung Room
-                </Button>
-              </Card>
-            ))}
+            <p className="text-gray-500 dark:text-gray-500 text-xs mt-2">
+              Klik Rapat baru untuk dapatkan link yang bisa dikirim kepada orang yang ingin diajak rapat
+            </p>
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Create Room Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Buat Rapat Baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="name">Nama Rapat *</Label>
+              <Input
+                id="name"
+                placeholder="Masukkan nama rapat"
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="description">Deskripsi</Label>
+              <Textarea
+                id="description"
+                placeholder="Masukkan deskripsi (opsional)"
+                value={roomDescription}
+                onChange={(e) => setRoomDescription(e.target.value)}
+                className="mt-1"
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="maxParticipants">Max Participants</Label>
+              <Input
+                id="maxParticipants"
+                type="number"
+                placeholder="Tidak terbatas"
+                value={maxParticipants || ""}
+                onChange={(e) => setMaxParticipants(e.target.value ? parseInt(e.target.value) : undefined)}
+                className="mt-1"
+                min={1}
+              />
+            </div>
+            <Button
+              onClick={handleCreateRoom}
+              disabled={creating}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              {creating ? "Membuat..." : "Buat Rapat"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Room ID Dialog - Show after room creation */}
+      <Dialog open={roomIdDialogOpen} onOpenChange={setRoomIdDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Rapat Berhasil Dibuat</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>ID Room (Salin dan bagikan)</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={createdRoomId}
+                  readOnly
+                  className="flex-1 font-mono text-sm bg-gray-50 dark:bg-gray-800"
+                />
+                <Button
+                  onClick={handleCopyRoomId}
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleEnterRoom}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                <Video className="mr-2 h-4 w-4" />
+                Masuk Rapat
+              </Button>
+              <Button
+                onClick={() => setRoomIdDialogOpen(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Tutup
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-

@@ -33,7 +33,7 @@ export default function Home() {
     // Trigger animation on mount/remount
     const timer = setTimeout(() => {
       setMounted(true);
-      setAnimationKey((prev) => prev + 1);
+      setAnimationKey((prev: number) => prev + 1);
     }, 10);
     return () => {
       clearTimeout(timer);
@@ -115,41 +115,41 @@ export default function Home() {
       </div>
 
       {/* Main content */}
-      <main className="relative z-10 flex min-h-[calc(100vh-64px)] flex-col items-center justify-center px-6 -mt-16">
+      <main className="relative z-10 flex min-h-[calc(100vh-64px)] flex-col items-center justify-center px-6 -mt-10">
         {/* Main heading */}
         <h1
           key={`heading-${animationKey}`}
-          className={`text-center text-5xl sm:text-7xl md:text-8xl font-bold tracking-tight mb-6 font-[family-name:var(--font-outfit)] ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          className={`text-center text-5xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-4 sm:mb-5 md:mb-6 font-[family-name:var(--font-outfit)] ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
           style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}
         >
           <span className="bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
-            Connect
+            Zoom Meeting
           </span>
           <br />
           <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-            Anywhere
+            AI Agent
           </span>
         </h1>
 
         {/* Subtitle */}
         <p
           key={`subtitle-${animationKey}`}
-          className={`text-center text-lg sm:text-xl text-gray-400 max-w-md mb-12 leading-relaxed font-[family-name:var(--font-outfit)] ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          className={`text-center text-base sm:text-lg md:text-xl text-gray-400 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl mb-6 sm:mb-8 md:mb-10 px-4 sm:px-0 leading-relaxed font-[family-name:var(--font-outfit)] ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
           style={{ animationDelay: "0.2s", animationFillMode: "forwards" }}
         >
-          Experience next-generation video conferencing with crystal-clear
-          quality and seamless collaboration.
+          Platform meeting profesional dengan AI Agent untuk UMKM. 
+          Transkrip, analisis, dan rekomendasi otomatis dari setiap pertemuan dengan investor.
         </p>
 
         {/* CTA Button */}
         <div
           key={`button-${animationKey}`}
-          className={mounted ? "animate-fadeInUp" : "opacity-0"}
+          className={`${mounted ? "animate-fadeInUp" : "opacity-0"} mb-6 sm:mb-8 md:mb-10`}
           style={{ animationDelay: "0.3s", animationFillMode: "forwards" }}
         >
           <button
             onClick={handleEnter}
-            className="group relative px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 font-[family-name:var(--font-space)]"
+            className="group relative px-7 py-3.5 sm:px-8 sm:py-4 md:px-10 md:py-4 rounded-full font-semibold text-base sm:text-lg md:text-xl transition-all duration-300 font-[family-name:var(--font-space)]"
           >
             {/* Button glow effect */}
             <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-70 blur-lg group-hover:opacity-100 transition-opacity duration-300" />
@@ -158,10 +158,10 @@ export default function Home() {
             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
             
             {/* Button inner */}
-            <div className="relative flex items-center gap-3 text-white">
+            <div className="relative flex items-center gap-2 sm:gap-3 text-white">
               <span>Enter Platform</span>
               <svg
-                className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300"
+                className="w-5 h-5 sm:w-6 sm:h-6 transform group-hover:translate-x-1 transition-transform duration-300"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -180,64 +180,70 @@ export default function Home() {
         {/* Features */}
         <div
           key={`features-${animationKey}`}
-          className={`mt-20 grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
+          className={`mt-3 sm:mt-12 md:mt-16 w-full max-w-6xl px-4 sm:px-6 md:px-8 ${mounted ? "animate-fadeInUp" : "opacity-0"}`}
           style={{ animationDelay: "0.4s", animationFillMode: "forwards" }}
         >
-          {[
-            {
-              icon: (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              ),
-              title: "Lightning Fast",
-              desc: "Ultra-low latency",
-            },
-            {
-              icon: (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              ),
-              title: "Secure",
-              desc: "End-to-end encrypted",
-            },
-            {
-              icon: (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              ),
-              title: "Collaborative",
-              desc: "Real-time teamwork",
-            },
-          ].map((feature, i) => (
-            <div
-              key={i}
-              className="group relative p-6 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm hover:bg-white/[0.05] hover:border-white/20 transition-all duration-300"
-            >
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-transparent to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="relative">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-indigo-400 mb-3">
-                  {feature.icon}
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+            {[
+              {
+                icon: (
+                  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                ),
+                title: "AI Agent Cerdas",
+                desc: "Transkrip & analisis otomatis",
+              },
+              {
+                icon: (
+                  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                ),
+                title: "Meeting Profesional",
+                desc: "Kualitas HD untuk investor",
+              },
+              {
+                icon: (
+                  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                ),
+                title: "Aman & Terpercaya",
+                desc: "Data meeting terlindungi",
+              },
+            ].map((feature, i) => (
+              <div
+                key={i}
+                className="group relative flex flex-col h-full p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border border-white/10 bg-white/[0.02] backdrop-blur-sm hover:bg-white/[0.05] hover:border-white/20 transition-all duration-300"
+              >
+                <div className="absolute inset-0 rounded-lg sm:rounded-xl bg-gradient-to-br from-indigo-500/10 via-transparent to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative flex flex-col h-full items-center text-center">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-indigo-400 mb-3 sm:mb-4 flex-shrink-0">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6">
+                      {feature.icon}
+                    </div>
+                  </div>
+                  <h3 className="text-white font-semibold text-sm sm:text-base md:text-lg mb-2 font-[family-name:var(--font-space)] leading-tight">
+                    {feature.title}
+                  </h3>
+                  <p className="text-gray-400 text-xs sm:text-sm md:text-base leading-relaxed">{feature.desc}</p>
                 </div>
-                <h3 className="text-white font-semibold mb-1 font-[family-name:var(--font-space)]">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-500 text-sm">{feature.desc}</p>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </main>
 
       {/* Footer */}
       <footer className="absolute bottom-6 left-0 right-0 text-center">
         <p className="text-gray-600 text-sm font-[family-name:var(--font-outfit)]">
-          Powered by{" "}
+          Platform Meeting UMKM dengan{" "}
+          <span className="text-gray-400">AI Agent</span>
+          {" · "}
           <span className="text-gray-400">LiveKit</span>
           {" · "}
-          <span className="text-gray-400">Next.js</span>
+          <span className="text-gray-400">Kolosal AI</span>
         </p>
       </footer>
 

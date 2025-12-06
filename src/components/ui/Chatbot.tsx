@@ -1,16 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { MessageCircle, Settings2, RefreshCw } from "lucide-react";
+import { MessageCircle, Settings2, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { WorkspaceManager } from "@/components/ui/WorkspaceManager";
 import { ChatbotSettings } from "@/components/chatbot/ChatbotSettings";
 import { ChatbotMessages } from "@/components/chatbot/ChatbotMessages";
 import { ChatbotInput } from "@/components/chatbot/ChatbotInput";
 import { useChatbot } from "@/hooks/useChatbot";
 import { handleDetectMode, handleOcrMode, handleAgentMode, handleChatMode } from "@/utils/chatbot/handlers";
-import { displayText } from "@/utils/chatbot/typing";
 import type { Message } from "@/utils/chatbot/types";
 
 export function Chatbot() {
@@ -172,14 +170,17 @@ export function Chatbot() {
 
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all"
-        size="icon"
-      >
-        <MessageCircle className="h-6 w-6" />
-        <span className="sr-only">Open chat</span>
-      </Button>
+      <div className="fixed bottom-6 right-6 z-50 group">
+        <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-0 blur-lg group-hover:opacity-30 transition-opacity" />
+        <Button
+          onClick={() => setOpen(true)}
+          className="relative h-14 w-14 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40 transition-all border-0"
+          size="icon"
+        >
+          <MessageCircle className="h-6 w-6 text-white" />
+          <span className="sr-only">Open chat</span>
+        </Button>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex flex-col h-[700px] max-w-lg p-0">
@@ -189,28 +190,34 @@ export function Chatbot() {
                 <MessageCircle className="h-5 w-5" />
                 AI Agent
               </DialogTitle>
-              <div className="flex items-center gap-1">
-                <WorkspaceManager
-                  selectedWorkspace={selectedWorkspace}
-                  onWorkspaceSelect={setSelectedWorkspace}
-                />
+              <div className="flex items-center gap-3">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
                   onClick={() => setSettingsOpen(!settingsOpen)}
-                  className="h-8 w-8"
+                  className="h-8 w-28"
                   title="Settings"
                 >
                   <Settings2 className="h-4 w-4" />
+                  <span className="">Settings</span>
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
                   onClick={clearChat}
                   className="h-8 w-8"
                   title="Clear chat"
                 >
                   <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setOpen(false)}
+                  className="h-8 w-8"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>

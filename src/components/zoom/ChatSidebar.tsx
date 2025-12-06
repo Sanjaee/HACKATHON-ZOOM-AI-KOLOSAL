@@ -132,7 +132,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
           const message = JSON.parse(event.data);
           
           if (message.type === "message" && message.payload) {
-            setMessages((prev) => {
+            setMessages((prev: ChatMessage[]) => {
               // Avoid duplicates
               const exists = prev.some((m) => m.id === message.payload.id);
               if (exists) return prev;
@@ -207,8 +207,8 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       const messageData = responseData.data || responseData;
 
       if (messageData) {
-        setMessages((prev) => {
-          const exists = prev.some((m) => m.id === messageData.id);
+        setMessages((prev: ChatMessage[]) => {
+          const exists = prev.some((m: ChatMessage) => m.id === messageData.id);
           if (exists) return prev;
           return [...prev, messageData];
         });
