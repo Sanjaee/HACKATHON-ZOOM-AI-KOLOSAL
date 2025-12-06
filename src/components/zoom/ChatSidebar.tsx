@@ -40,7 +40,7 @@ function getUserIdFromToken(token: string | null): string | null {
     
     // Return userId from token (this is the database ID)
     return payload.userId || payload.user_id || payload.sub || null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -51,6 +51,8 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [aiStreaming, setAiStreaming] = useState(false);
+  const [streamingUserId, setStreamingUserId] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -94,8 +96,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
 
       const data = await response.json();
       setMessages(data.data || []);
-    } catch (err: any) {
-      console.error("[Chat] Error fetching messages:", err);
+      } catch {
       // Don't show toast for every error to avoid spam
       setMessages((prev) => {
         if (prev.length === 0) {
@@ -135,7 +136,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
         console.log("[Chat] Token expired, not connecting WebSocket");
         return;
       }
-    } catch (error) {
+    } catch {
       // If can't parse token, continue anyway
     }
 
@@ -169,6 +170,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
 
       ws.onopen = () => {
         isConnectingRef.current = false;
+        console.log("[ChatSidebar] WebSocket connected successfully:", wsUrl);
         // Clear any pending reconnect
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
@@ -179,6 +181,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log("[ChatSidebar] WebSocket message received:", message.type, message);
           
           if (message.type === "message" && message.payload) {
             setMessages((prev: ChatMessage[]) => {
@@ -188,33 +191,77 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
               return [...prev, message.payload];
             });
           } else if (message.type === "ai_typing" && message.payload) {
-            // Add AI typing indicator
-            setMessages((prev: ChatMessage[]) => {
-              const exists = prev.some((m) => m.id === message.payload.id);
-              if (exists) return prev;
-              return [...prev, { ...message.payload, is_ai: true, is_streaming: true }];
-            });
+            // Set streaming status - disable chat for all users
+            setAiStreaming(true);
+            setStreamingUserId(message.payload.user_id || null);
+            console.log("[ChatSidebar] AI typing started by:", message.payload.user_id);
           } else if (message.type === "ai_stream" && message.payload) {
-            // Update streaming AI message
+            // Update streaming AI message - disable chat for all users
+            setAiStreaming(true);
+            setStreamingUserId(message.payload.user_id || null);
             setMessages((prev: ChatMessage[]) => {
-              return prev.map((m) => {
-                if (m.id === message.payload.id) {
-                  return { ...message.payload, is_ai: true, is_streaming: true };
-                }
-                return m;
-              });
+              const tempId = message.payload.id;
+              const content = message.payload.content || "";
+              
+              // Check if temp message already exists
+              const exists = prev.some((m) => m.id === tempId);
+              if (exists) {
+                // Update existing streaming message
+                return prev.map((m) => {
+                  if (m.id === tempId) {
+                    return {
+                      ...m,
+                      message: content,
+                      is_ai: true,
+                      is_streaming: true,
+                    };
+                  }
+                  return m;
+                });
+              } else {
+                // Create new streaming message
+                return [...prev, {
+                  id: tempId,
+                  room_id: roomId,
+                  user_id: message.payload.user_id || "ai-agent",
+                  user_name: message.payload.user_name || "AI Agent",
+                  user_email: message.payload.user_email || "ai@agent.com",
+                  message: content,
+                  created_at: new Date().toISOString(),
+                  is_ai: true,
+                  is_streaming: true,
+                }];
+              }
             });
           } else if (message.type === "ai_complete" && message.payload) {
-            // Mark AI message as complete
+            // Mark AI message as complete and clear streaming status - enable chat again
+            setAiStreaming(false);
+            setStreamingUserId(null);
             setMessages((prev: ChatMessage[]) => {
-              return prev.map((m) => {
-                if (m.id === message.payload.id) {
-                  return { ...message.payload, is_ai: true, is_streaming: false };
-                }
-                return m;
-              });
+              const finalMessage = message.payload.message || message.payload;
+              const tempId = message.payload.temp_id;
+              
+              // Remove temp message and add final message
+              const filtered = prev.filter((m) => !(tempId && m.id === tempId));
+              
+              // Check if final message already exists
+              const exists = filtered.some((m) => m.id === finalMessage.id);
+              if (exists) {
+                // Update existing message
+                return filtered.map((m) => 
+                  m.id === finalMessage.id 
+                    ? { ...finalMessage, is_ai: true, is_streaming: false }
+                    : m
+                );
+              } else {
+                // Add new final message
+                return [...filtered, { ...finalMessage, is_ai: true, is_streaming: false }];
+              }
             });
           } else if (message.type === "ai_error" && message.payload) {
+            // Clear streaming status on error - enable chat again
+            setAiStreaming(false);
+            setStreamingUserId(null);
             // Show AI error message
             setMessages((prev: ChatMessage[]) => {
               const exists = prev.some((m) => m.id === message.payload.id);
@@ -229,30 +276,40 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
               return [...prev, { ...message.payload, is_ai: true, is_streaming: false }];
             });
           }
-        } catch (error) {
+        } catch {
           // Error parsing WebSocket message
         }
       };
 
       ws.onerror = (error) => {
         isConnectingRef.current = false;
+        console.error("[ChatSidebar] WebSocket error:", error);
         // WebSocket error - don't reconnect immediately, wait for onclose
       };
 
       ws.onclose = (event) => {
         isConnectingRef.current = false;
+        console.log("[ChatSidebar] WebSocket closed:", {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+          isOpen: isOpen,
+          roomId: roomId,
+          userId: userId
+        });
         
         // Don't reconnect if:
         // 1. Chat is closed
         // 2. Close code indicates authentication error (4001, 4003, 1008)
         // 3. Already have a pending reconnect
         if (!isOpen) {
+          console.log("[ChatSidebar] Chat is closed, not reconnecting");
           return;
         }
 
         // Check if it's an auth error (401)
         if (event.code === 1008 || event.code === 4001 || event.code === 4003) {
-          console.log("[Chat] WebSocket closed due to auth error, not reconnecting");
+          console.log("[ChatSidebar] WebSocket closed due to auth error, not reconnecting");
           return;
         }
 
@@ -261,16 +318,20 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
         if (event.code === 1000 || event.code === 1001) {
           // Normal closure or going away - reconnect after delay
           if (!reconnectTimeoutRef.current) {
+            console.log("[ChatSidebar] Scheduling reconnect in 5 seconds...");
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectTimeoutRef.current = null;
               if (isOpen && roomId && userId) {
+                console.log("[ChatSidebar] Reconnecting WebSocket...");
                 connectWebSocket();
               }
             }, 5000); // Increased to 5 seconds to reduce polling
           }
+        } else {
+          console.log("[ChatSidebar] WebSocket closed with code", event.code, "- not reconnecting");
         }
       };
-    } catch (error) {
+    } catch {
       isConnectingRef.current = false;
       // Error connecting WebSocket
     }
@@ -339,11 +400,13 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || sending) return;
+    if (!newMessage.trim() || sending || aiStreaming) return;
 
     const messageToSend = newMessage.trim();
+    const isAIRequest = messageToSend.toLowerCase().startsWith("@ai ") || messageToSend.toLowerCase().startsWith("@agen ");
+    
     console.log("[ChatSidebar] Sending message:", messageToSend);
-    console.log("[ChatSidebar] Contains @agen:", messageToSend.toLowerCase().includes("@agen"));
+    console.log("[ChatSidebar] Is AI request:", isAIRequest);
 
     try {
       setSending(true);
@@ -356,51 +419,148 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
           description: "Token tidak ditemukan. Silakan login ulang.",
           variant: "destructive",
         });
+        setSending(false);
         return;
       }
       
-      // Use API_BASE_URL from environment or fallback to current host
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
-      const apiUrl = API_BASE_URL || window.location.origin;
-      const url = `${apiUrl}/api/v1/rooms/${roomId}/messages`;
-      
-      console.log("[ChatSidebar] POST URL:", url);
-      console.log("[ChatSidebar] Request body:", { message: messageToSend });
-      
-      const fetchResponse = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: messageToSend }),
-      });
+      if (isAIRequest) {
+        // Handle AI request via HTTP (Test Kolosal API - sementara sebelum realtime)
+        const aiPrompt = messageToSend.replace(/^@(ai|agen)\s+/i, "").trim();
+        
+        if (!aiPrompt) {
+          toast({
+            title: "Error",
+            description: "Pertanyaan AI tidak boleh kosong",
+            variant: "destructive",
+          });
+          setSending(false);
+          return;
+        }
 
-      console.log("[ChatSidebar] Response status:", fetchResponse.status);
-      console.log("[ChatSidebar] Response ok:", fetchResponse.ok);
+        // Set AI streaming status
+        setAiStreaming(true);
+        setStreamingUserId(databaseUserId);
 
-      if (!fetchResponse.ok) {
-        const errorText = await fetchResponse.text();
-        console.error("[ChatSidebar] Response error:", errorText);
-        throw new Error(`Failed to send message: ${fetchResponse.status} ${errorText}`);
-      }
+        try {
+          // Call test Kolosal API endpoint via HTTP
+          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+          const apiUrl = API_BASE_URL || window.location.origin;
+          const url = `${apiUrl}/api/v1/rooms/${roomId}/test-kolosal`;
+          
+          console.log("[ChatSidebar] Testing Kolosal API via HTTP:", url);
+          console.log("[ChatSidebar] Prompt:", aiPrompt);
+          
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              prompt: aiPrompt,
+              model: "meta-llama/llama-4-maverick-17b-128e-instruct",
+              max_tokens: 1000,
+            }),
+          });
 
-      const responseData = await fetchResponse.json();
-      console.log("[ChatSidebar] Response data:", responseData);
-      
-      const messageData = responseData.data || responseData;
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to call Kolosal API: ${response.status} ${errorText}`);
+          }
 
-      if (messageData) {
-        console.log("[ChatSidebar] Message created:", messageData.id);
-        setMessages((prev: ChatMessage[]) => {
-          const exists = prev.some((m: ChatMessage) => m.id === messageData.id);
-          if (exists) return prev;
-          return [...prev, messageData];
+          const responseData = await response.json();
+          console.log("[ChatSidebar] Kolosal API response:", responseData);
+          
+          const aiResponse = responseData.data?.response || "No response from AI";
+          
+          // Add AI message to chat
+          const aiMessage: ChatMessage = {
+            id: `ai-${Date.now()}`,
+            room_id: roomId,
+            user_id: "ai-agent",
+            user_name: "AI Agent",
+            user_email: "ai@agent.com",
+            message: aiResponse,
+            created_at: new Date().toISOString(),
+            is_ai: true,
+            is_streaming: false,
+          };
+          
+          setMessages((prev: ChatMessage[]) => {
+            const exists = prev.some((m) => m.id === aiMessage.id);
+            if (exists) return prev;
+            return [...prev, aiMessage];
+          });
+          
+          setNewMessage("");
+          console.log("[ChatSidebar] AI response received successfully");
+        } catch (error: any) {
+          console.error("[ChatSidebar] Error calling Kolosal API:", error);
+          toast({
+            title: "Error",
+            description: error.message || "Gagal memanggil Kolosal API",
+            variant: "destructive",
+          });
+        } finally {
+          setAiStreaming(false);
+          setStreamingUserId(null);
+          setSending(false);
+        }
+      } else {
+        // Handle regular message via HTTP
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+        const apiUrl = API_BASE_URL || window.location.origin;
+        const url = `${apiUrl}/api/v1/rooms/${roomId}/messages`;
+        
+        console.log("[ChatSidebar] POST URL:", url);
+        console.log("[ChatSidebar] Request body:", { message: messageToSend });
+        
+        const fetchResponse = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message: messageToSend }),
         });
-      }
 
-      setNewMessage("");
-      console.log("[ChatSidebar] Message sent successfully");
+        console.log("[ChatSidebar] Response status:", fetchResponse.status);
+        console.log("[ChatSidebar] Response ok:", fetchResponse.ok);
+
+        if (!fetchResponse.ok) {
+          const errorText = await fetchResponse.text();
+          console.error("[ChatSidebar] Response error:", errorText);
+          
+          // Check if it's a conflict (AI is processing)
+          if (fetchResponse.status === 409) {
+            toast({
+              title: "Chat dinonaktifkan",
+              description: "Chat dinonaktifkan saat AI sedang memproses. Silakan tunggu sebentar.",
+              variant: "destructive",
+            });
+          } else {
+            throw new Error(`Failed to send message: ${fetchResponse.status} ${errorText}`);
+          }
+          return;
+        }
+
+        const responseData = await fetchResponse.json();
+        console.log("[ChatSidebar] Response data:", responseData);
+        
+        const messageData = responseData.data || responseData;
+
+        if (messageData) {
+          console.log("[ChatSidebar] Message created:", messageData.id);
+          setMessages((prev: ChatMessage[]) => {
+            const exists = prev.some((m: ChatMessage) => m.id === messageData.id);
+            if (exists) return prev;
+            return [...prev, messageData];
+          });
+        }
+
+        setNewMessage("");
+        console.log("[ChatSidebar] Message sent successfully");
+      }
     } catch (error: any) {
       console.error("[ChatSidebar] Error sending message:", error);
       toast({
@@ -464,7 +624,8 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
               const messageUserId = String(msg.user_id || "").trim();
               const currentUser = String(databaseUserId || "").trim();
               const isOwnMessage = currentUser !== "" && currentUser === messageUserId;
-              const isAIMessage = msg.is_ai || msg.user_id === "ai-agent";
+              // Check if it's AI message by user_email or is_ai flag
+              const isAIMessage = msg.is_ai || msg.user_email === "ai@agent.com" || msg.user_name === "AI Agent";
               
               return (
                 <div
@@ -554,25 +715,46 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
         )}
       </div>
 
-      {/* Input */}
+      {/* Chat Input - Integrated with AI */}
       <div className="shrink-0 p-3 sm:p-4 border-t border-gray-700 pb-safe">
+        {aiStreaming && (
+          <div className="text-xs text-purple-400 mb-2 px-1 flex items-center gap-2">
+            <div className="shrink-0 w-6 h-6 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-xs text-white font-semibold">
+              🤖
+            </div>
+            <span>
+              {streamingUserId === databaseUserId 
+                ? "AI sedang memproses permintaan Anda..." 
+                : "AI sedang digunakan oleh pengguna lain. Chat dinonaktifkan..."}
+            </span>
+          </div>
+        )}
         <div className="flex gap-2">
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ketik pesan..."
+            placeholder={aiStreaming 
+              ? (streamingUserId === databaseUserId ? "AI sedang memproses..." : "Chat dinonaktifkan saat AI aktif...")
+              : "Ketik pesan atau @ai [pertanyaan] untuk AI..."}
             className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400 text-base"
-            disabled={sending}
+            disabled={sending || aiStreaming}
           />
           <Button
             onClick={handleSendMessage}
-            disabled={!newMessage.trim() || sending}
+            disabled={!newMessage.trim() || sending || aiStreaming}
             size="icon"
-            className="bg-blue-600 hover:bg-blue-700 shrink-0 h-10 w-10"
+            className={`shrink-0 h-10 w-10 ${
+              newMessage.trim().toLowerCase().startsWith("@ai ") || newMessage.trim().toLowerCase().startsWith("@agen ")
+                ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
           >
             <Send className="h-4 w-4" />
           </Button>
+        </div>
+        <div className="text-xs text-gray-500 mt-1 px-1">
+          Tip: Gunakan @ai atau @agen di awal pesan untuk bertanya ke AI
         </div>
       </div>
     </Card>
