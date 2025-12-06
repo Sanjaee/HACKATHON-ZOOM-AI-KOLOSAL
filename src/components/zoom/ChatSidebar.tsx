@@ -425,7 +425,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
       }
       
       if (isAIRequest) {
-        // Handle AI request via HTTP (Test Kolosal API - sementara sebelum realtime)
+        // Handle AI request via HTTP (Kolosal API with realtime streaming)
         const aiPrompt = messageToSend.replace(/^@(ai|agen)\s+/i, "").trim();
         
         if (!aiPrompt) {
@@ -442,11 +442,11 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
         // Backend will broadcast ai_typing via WebSocket which will disable input for all users
 
         try {
-          // Call test Kolosal API endpoint via HTTP
+          // Call Kolosal API endpoint via HTTP
           // Backend will handle realtime streaming via WebSocket broadcasts
           const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
           const apiUrl = API_BASE_URL || window.location.origin;
-          const url = `${apiUrl}/api/v1/rooms/${roomId}/test-kolosal`;
+          const url = `${apiUrl}/api/v1/rooms/${roomId}/kolosal`;
           
           console.log("[ChatSidebar] Requesting AI via HTTP (realtime via WebSocket):", url);
           console.log("[ChatSidebar] Prompt:", aiPrompt);
