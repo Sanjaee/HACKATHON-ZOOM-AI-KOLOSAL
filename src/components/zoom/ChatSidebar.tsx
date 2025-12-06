@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Send, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
+import { parseMarkdown } from "@/utils/chatbot/markdown";
 
 interface ChatMessage {
   id: string;
@@ -633,13 +634,13 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
                         </span>
                         
                         {/* Bubble pesan AI - GRADIENT */}
-                        <div className="rounded-2xl px-4 py-2 shadow-lg bg-gradient-to-r from-purple-600/80 to-pink-600/80 text-white rounded-tl-md">
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
-                            {msg.message}
+                        <div className="rounded-2xl px-4 py-3 shadow-lg bg-gradient-to-r from-purple-600/80 to-pink-600/80 text-white rounded-tl-md">
+                          <div className="text-sm leading-relaxed wrap-break-word">
+                            {parseMarkdown(msg.message)}
                             {msg.is_streaming && (
                               <span className="inline-block w-2 h-2 bg-white rounded-full ml-1 animate-pulse" />
                             )}
-                          </p>
+                          </div>
                         </div>
                         
                         {/* Waktu */}
