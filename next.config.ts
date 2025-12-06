@@ -4,8 +4,9 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
   reactStrictMode: true,
-  // Removed 'standalone' output mode - not compatible with Vercel deployment
-  // Vercel uses its own optimized build process
+  // Enable standalone output for Docker deployment
+  // Vercel will ignore this and use its own optimized build process
+  output: 'standalone',
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
