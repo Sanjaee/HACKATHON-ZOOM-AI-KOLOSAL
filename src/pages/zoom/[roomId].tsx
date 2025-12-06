@@ -842,9 +842,8 @@ export default function ZoomCallPage() {
   ) || (isScreenSharing ? room?.localParticipant : null);
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
-      <Navbar />
-      <div className="flex-1 flex flex-col">
+    <div className="h-screen bg-gray-900 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header */}
         <div className="bg-gray-800 px-3 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
           <div className="min-w-0 flex-1">
@@ -961,17 +960,32 @@ export default function ZoomCallPage() {
             </div>
           ) : (
             /* Normal Grid Layout (No Screen Share) */
-            <div className="flex-1 p-3 sm:p-6 h-[70vh]  transition-all duration-300 ">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4 max-w-7xl mx-auto">
+            <div className="flex-1 p-2 sm:p-4 h-full w-full overflow-auto transition-all duration-300">
+              <div className={`grid gap-2 sm:gap-3 h-full w-full auto-rows-fr ${
+                participantCount === 1
+                  ? 'grid-cols-1'
+                  : participantCount === 2
+                  ? 'grid-cols-1 sm:grid-cols-2'
+                  : participantCount <= 4
+                  ? 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-4'
+                  : participantCount === 5
+                  ? 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-4'
+                  : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+              }`}>
                 {/* Local Video */}
-                <Card className="relative p-0 aspect-video bg-gray-800 overflow-hidden border-0">
+                <Card className="relative p-0 bg-gray-800 overflow-hidden border-0 rounded-lg min-h-0 h-full">
                 <video
                   ref={localVideoRef}
-                  className={`w-full h-full object-cover ${facingMode === "user" ? "" : "scale-x-100"}`}
+                  className={`w-full h-full object-cover ${facingMode === "user" ? "" : "scale-x-100"} ${isCameraOff ? "hidden" : ""}`}
                   autoPlay
                   playsInline
                   muted
                 />
+                {isCameraOff && (
+                  <div className="absolute inset-0 w-full h-full bg-gray-900 flex items-center justify-center">
+                    <VideoOff className="h-12 w-12 sm:h-16 sm:w-16 text-gray-600" />
+                  </div>
+                )}
                 <div className="absolute bottom-1.5 sm:bottom-2 left-1.5 sm:left-2 flex items-center gap-1.5">
                   <span className="bg-black/70 text-white px-2 sm:px-3 py-0.5 sm:py-1 rounded text-xs sm:text-sm">
                     Anda
@@ -1007,7 +1021,7 @@ export default function ZoomCallPage() {
                 const actualCameraOff = !cameraPublication?.isSubscribed || !cameraPublication.track;
                 
                 return (
-                  <Card key={identity} className="relative p-0 aspect-video bg-gray-800 overflow-hidden border-0">
+                  <Card key={identity} className="relative p-0 bg-gray-800 overflow-hidden border-0 rounded-lg min-h-0 h-full">
                       <div
                         ref={(el) => {
                           if (el) {
@@ -1017,8 +1031,13 @@ export default function ZoomCallPage() {
                             }
                           }
                         }}
-                        className="w-full h-full"
+                        className={`w-full h-full ${actualCameraOff ? "hidden" : ""}`}
                       />
+                      {actualCameraOff && (
+                        <div className="absolute inset-0 w-full h-full bg-gray-900 flex items-center justify-center">
+                          <VideoOff className="h-12 w-12 sm:h-16 sm:w-16 text-gray-600" />
+                        </div>
+                      )}
                       <div className="absolute bottom-1.5 sm:bottom-2 left-1.5 sm:left-2 bg-black/70 text-white px-2 sm:px-3 py-0.5 sm:py-1 rounded text-xs sm:text-sm truncate max-w-[80%]">
                         {identity}
                       </div>
