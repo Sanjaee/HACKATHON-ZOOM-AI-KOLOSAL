@@ -27,6 +27,8 @@ export default function ZoomCallPage() {
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShareTrack, setScreenShareTrack] = useState<MediaStreamTrack | null>(null);
+  const [chatSidebarWidth, setChatSidebarWidth] = useState(320); // Default 320px (w-80)
+  const [isResizing, setIsResizing] = useState(false);
   
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const screenShareElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -34,6 +36,8 @@ export default function ZoomCallPage() {
   const localScreenShareRef = useRef<HTMLVideoElement>(null);
   const isJoiningRef = useRef(false);
   const hasJoinedRef = useRef(false);
+  const resizeStartXRef = useRef<number>(0);
+  const resizeStartWidthRef = useRef<number>(320);
 
   // Detect mobile screen
   useEffect(() => {
@@ -712,6 +716,42 @@ export default function ZoomCallPage() {
     }
   };
 
+  // Handle chat sidebar resize
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = chatSidebarWidth;
+  }, [chatSidebarWidth]);
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+    
+    const diff = resizeStartXRef.current - e.clientX; // Negative when dragging left
+    const newWidth = Math.max(250, Math.min(600, resizeStartWidthRef.current + diff));
+    setChatSidebarWidth(newWidth);
+  }, [isResizing]);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeEnd);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
+
   const leaveRoom = async () => {
     if (room && room.state === "connected") {
       try {
@@ -1063,12 +1103,27 @@ export default function ZoomCallPage() {
 
           {/* Chat Sidebar - Desktop */}
           {!isMobile && chatOpen && session?.user?.id && (
-            <div className="w-80 border-l border-gray-700 shrink-0 h-full overflow-hidden hidden md:flex md:flex-col min-h-0">
-              <ChatSidebar
-                roomId={roomId as string}
-                userId={session.user.id}
-                isOpen={chatOpen}
+            <div className="relative shrink-0 h-full overflow-hidden hidden md:flex md:flex-col min-h-0 border-l border-gray-700">
+              {/* Resize Handle */}
+              <div
+                onMouseDown={handleResizeStart}
+                className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-blue-500 transition-colors ${
+                  isResizing ? 'bg-blue-500' : 'bg-transparent'
+                }`}
+                style={{ touchAction: 'none' }}
               />
+              
+              {/* Chat Sidebar Container */}
+              <div 
+                className="h-full overflow-hidden"
+                style={{ width: `${chatSidebarWidth}px` }}
+              >
+                <ChatSidebar
+                  roomId={roomId as string}
+                  userId={session.user.id}
+                  isOpen={chatOpen}
+                />
+              </div>
             </div>
           )}
 

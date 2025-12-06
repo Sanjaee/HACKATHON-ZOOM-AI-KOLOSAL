@@ -3,7 +3,9 @@ import { useSession } from "next-auth/react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, MessageSquare } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Send, MessageSquare, Settings } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import { parseMarkdown } from "@/utils/chatbot/markdown";
@@ -54,6 +56,16 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   const [sending, setSending] = useState(false);
   const [aiStreaming, setAiStreaming] = useState(false);
   const [streamingUserId, setStreamingUserId] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null); // Base64 image for OCR
+  const [aiModel, setAiModel] = useState<string>("meta-llama/llama-4-maverick-17b-128e-instruct");
+  const [availableModels, setAvailableModels] = useState<Array<{id: string; name: string}>>([]);
+  const [maxTokens, setMaxTokens] = useState<number>(1000);
+  const [useCache, setUseCache] = useState<boolean>(false);
+  const [ocrAutoFix, setOcrAutoFix] = useState<boolean>(true);
+  const [ocrInvoice, setOcrInvoice] = useState<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -64,9 +76,61 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   // Get userId from database via JWT token (not from session.user.id which is Google ID)
   const databaseUserId = getUserIdFromToken(session?.accessToken as string) || getUserIdFromToken(api.getAccessToken()) || userId;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  // Fetch available models on mount from frontend API
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const url = `/api/kolosal/model`;
+        
+        console.log("[ChatSidebar] Fetching models from:", url);
+        const response = await fetch(url);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log("[ChatSidebar] Models response:", data);
+          
+          if (data.models && Array.isArray(data.models)) {
+            const mappedModels = data.models.map((m: any) => ({
+              id: m.id || "",
+              name: m.name || m.id || "Unknown Model"
+            })).filter((m: any) => m.id); // Filter out invalid models
+            
+            console.log("[ChatSidebar] Mapped models:", mappedModels);
+            setAvailableModels(mappedModels);
+            
+            // Set default model if available and current model is not in list
+            if (mappedModels.length > 0) {
+              const currentModelExists = mappedModels.some((m: any) => m.id === aiModel);
+              if (!currentModelExists) {
+                setAiModel(mappedModels[0].id);
+                console.log("[ChatSidebar] Set default model to:", mappedModels[0].id);
+              }
+            }
+          } else {
+            console.warn("[ChatSidebar] Invalid models response format:", data);
+          }
+        } else {
+          const errorText = await response.text();
+          console.error("[ChatSidebar] Failed to fetch models:", response.status, errorText);
+        }
+      } catch (error) {
+        console.error("[ChatSidebar] Error fetching models:", error);
+      }
+    };
+    
+    fetchModels();
+  }, [aiModel]); // Include aiModel in dependencies to check if it exists in fetched models
+
+  const checkIfAtBottom = useCallback(() => {
+    if (!messagesContainerRef.current) return false;
+    const container = messagesContainerRef.current;
+    const threshold = 100;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    setIsAtBottom(checkIfAtBottom());
+  }, [checkIfAtBottom]);
 
   const fetchMessages = useCallback(async () => {
     // Prevent multiple simultaneous fetches
@@ -396,9 +460,40 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, roomId]); // fetchMessages and connectWebSocket are stable callbacks, no need to include
 
+  // Scroll to bottom when chat opens
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (isOpen) {
+      // Defer state update to avoid cascading renders
+      requestAnimationFrame(() => {
+        setIsAtBottom(true);
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 1);
+      });
+    }
+  }, [isOpen]);
+
+  // Auto-scroll when new messages arrive (only if user is at bottom)
+  useEffect(() => {
+    if (isAtBottom) {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 1);
+      });
+    }
+  }, [messages, isAtBottom]);
+
+  // Add scroll event listener
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener("scroll", handleScroll);
+      return () => {
+        container.removeEventListener("scroll", handleScroll);
+      };
+    }
+  }, [handleScroll]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || sending || aiStreaming) return;
@@ -428,14 +523,19 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
         // Handle AI request via HTTP (Kolosal API with realtime streaming)
         const aiPrompt = messageToSend.replace(/^@(ai|agen)\s+/i, "").trim();
         
-        if (!aiPrompt) {
+        if (!aiPrompt && !selectedImage) {
           toast({
             title: "Error",
-            description: "Pertanyaan AI tidak boleh kosong",
+            description: "Pertanyaan AI tidak boleh kosong atau upload gambar untuk OCR",
             variant: "destructive",
           });
           setSending(false);
           return;
+        }
+        
+        if (selectedImage && !aiPrompt) {
+          // Auto-use OCR if image is selected and no prompt
+          console.log("[ChatSidebar] Image selected with no prompt - using OCR mode");
         }
 
         // DON'T set AI streaming status here - wait for WebSocket ai_typing message
@@ -459,8 +559,12 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             },
             body: JSON.stringify({
               prompt: aiPrompt,
-              model: "meta-llama/llama-4-maverick-17b-128e-instruct",
-              max_tokens: 1000,
+              model: aiModel,
+              max_tokens: maxTokens,
+              cache: useCache || undefined,
+              image_data: selectedImage || undefined,
+              use_ocr: !!selectedImage, // Use OCR if image is provided
+              ocr_language: "auto",
             }),
           });
 
@@ -472,8 +576,9 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
           await response.json(); // Response is not needed - WebSocket will handle streaming
           console.log("[ChatSidebar] AI request sent successfully, waiting for WebSocket streaming...");
           
-          // Clear input immediately - WebSocket will handle the rest
+          // Clear input and image immediately - WebSocket will handle the rest
           setNewMessage("");
+          setSelectedImage(null);
           
           // Note: AI message will be added/updated via WebSocket:
           // 1. ai_typing -> disables input for all users
@@ -566,6 +671,50 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
     }
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Error",
+        description: "File harus berupa gambar",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "Error",
+        description: "Ukuran gambar maksimal 10MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setSelectedImage(base64);
+      toast({
+        title: "Gambar dipilih",
+        description: "Gambar siap untuk OCR. Kirim dengan @ai untuk ekstrak teks.",
+      });
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Error",
+        description: "Gagal membaca gambar",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -581,7 +730,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
   if (!isOpen) return null;
 
   return (
-    <Card className="w-full h-[73vh] flex flex-col rounded-none p-0 bg-gray-800 border-0 shadow-none overflow-hidden">
+    <Card className="w-full h-full flex flex-col rounded-none p-0 bg-gray-800 border-0 shadow-none overflow-hidden">
       {/* Header - Hidden on mobile modal */}
       {!hideHeader && (
         <div className="shrink-0 p-4 border-b border-gray-700 hidden md:block">
@@ -620,7 +769,7 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
                 >
                   {isAIMessage ? (
                     // PESAN AI - DI KIRI DENGAN STYLE KHUSUS
-                    <div className="flex gap-2 max-w-[85%]">
+                    <div className="flex gap-2 max-w-[85%] mb-20">
                       {/* Avatar AI */}
                       <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-xs text-white font-semibold">
                         🤖
@@ -715,14 +864,51 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             </span>
           </div>
         )}
+        {selectedImage && (
+          <div className="mb-2 p-2 bg-gray-700 rounded-lg flex items-center gap-2">
+            <img 
+              src={selectedImage} 
+              alt="Selected" 
+              className="w-12 h-12 object-cover rounded"
+            />
+            <span className="text-xs text-gray-300 flex-1">Gambar dipilih untuk OCR</span>
+            <Button
+              onClick={() => setSelectedImage(null)}
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+            >
+              Hapus
+            </Button>
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*"
+            onChange={handleImageSelect}
+            className="hidden"
+          />
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            size="icon"
+            variant="ghost"
+            className="shrink-0 h-10 w-10 bg-gray-700 hover:bg-gray-600"
+            disabled={sending || aiStreaming}
+            title="Upload gambar untuk OCR"
+          >
+            📷
+          </Button>
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder={aiStreaming 
               ? (streamingUserId === databaseUserId ? "AI sedang memproses..." : "Chat dinonaktifkan saat AI aktif...")
-              : "Ketik pesan atau @ai [pertanyaan] untuk AI..."}
+              : selectedImage 
+                ? "Ketik @ai untuk ekstrak teks dari gambar..."
+                : "Ketik pesan atau @ai [pertanyaan] untuk AI..."}
             className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400 text-base"
             disabled={sending || aiStreaming}
           />
@@ -739,10 +925,111 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            onClick={() => setSettingsOpen(true)}
+            size="sm"
+            variant="ghost"
+            className="text-xs text-gray-400 hover:text-white"
+            disabled={sending || aiStreaming}
+          >
+            <Settings className="h-3 w-3 mr-1" />
+            Settings
+          </Button>
+          {selectedImage && (
+            <>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <input
+                  type="checkbox"
+                  checked={ocrAutoFix}
+                  onChange={(e) => setOcrAutoFix(e.target.checked)}
+                  className="rounded"
+                  disabled={sending || aiStreaming}
+                />
+                <span>Auto Fix</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <input
+                  type="checkbox"
+                  checked={ocrInvoice}
+                  onChange={(e) => setOcrInvoice(e.target.checked)}
+                  className="rounded"
+                  disabled={sending || aiStreaming}
+                />
+                <span>Invoice</span>
+              </div>
+            </>
+          )}
+        </div>
         <div className="text-xs text-gray-500 mt-1 px-1">
-          Tip: Gunakan @ai atau @agen di awal pesan untuk bertanya ke AI
+          Tip: Gunakan @ai atau @agen di awal pesan untuk bertanya ke AI. Upload gambar untuk OCR.
         </div>
       </div>
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-white/10 backdrop-blur-xl border-white/20 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white font-semibold text-xl">AI Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="model" className="text-gray-300 font-medium">Model</Label>
+              <select
+                id="model"
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                className="mt-1 flex h-10 w-full rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm text-white ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={sending || aiStreaming}
+              >
+                {availableModels.length > 0 ? (
+                  availableModels.map((model) => (
+                    <option key={model.id} value={model.id} className="bg-gray-800 text-white">
+                      {model.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="meta-llama/llama-4-maverick-17b-128e-instruct" className="bg-gray-800 text-white">Loading models...</option>
+                )}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="maxTokens" className="text-gray-300 font-medium">Max Tokens</Label>
+              <Input
+                id="maxTokens"
+                type="number"
+                value={maxTokens}
+                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 1000)}
+                min={100}
+                max={4000}
+                disabled={sending || aiStreaming}
+                className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:bg-white/15 focus:border-indigo-400 focus:ring-indigo-400/20"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="cache"
+                checked={useCache}
+                onChange={(e) => setUseCache(e.target.checked)}
+                className="rounded"
+                disabled={sending || aiStreaming}
+              />
+              <Label htmlFor="cache" className="cursor-pointer text-gray-300 font-medium">
+                Enable Response Cache
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setSettingsOpen(false)}
+              className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-medium shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40 transition-all"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
