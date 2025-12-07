@@ -907,8 +907,8 @@ export default function ChatSidebar({ roomId, userId, isOpen, hideHeader = false
             placeholder={aiStreaming 
               ? (streamingUserId === databaseUserId ? "AI sedang memproses..." : "Chat dinonaktifkan saat AI aktif...")
               : selectedImage 
-                ? "Ketik @ai untuk ekstrak teks dari gambar..."
-                : "Ketik pesan atau @ai [pertanyaan] untuk AI..."}
+                ? "Ketik @ai ocr"
+                : "Ketik @ai"}
             className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400 text-base"
             disabled={sending || aiStreaming}
           />

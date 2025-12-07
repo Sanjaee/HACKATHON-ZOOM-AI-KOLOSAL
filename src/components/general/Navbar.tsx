@@ -3,6 +3,7 @@
 import React from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/router";
+import Image from "next/image";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,16 +54,9 @@ export default function Navbar() {
           className="flex items-center gap-2.5 group"
         >
           {/* Logo Icon */}
-          <div className="relative">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-shadow">
-              <Video className="w-5 h-5 text-white" />
-            </div>
-            <div className="absolute -inset-1 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 opacity-0 blur-lg group-hover:opacity-30 transition-opacity" />
+          <div className="relative bg-amber-50 p-2 rounded-sm">
+            <Image src="/logonav.svg" alt="Logo" width={60} height={60} />
           </div>
-          {/* Brand Name */}
-          <span className="text-lg font-bold text-white tracking-tight hidden sm:block">
-            Zacode
-          </span>
         </button>
 
         {/* Center Navigation - Desktop */}
