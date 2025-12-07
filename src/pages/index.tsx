@@ -141,15 +141,16 @@ export default function Home() {
           Transkrip, analisis, dan rekomendasi otomatis dari setiap pertemuan dengan investor.
         </p>
 
-        {/* CTA Button */}
+        {/* CTA Buttons */}
         <div
           key={`button-${animationKey}`}
-          className={`${mounted ? "animate-fadeInUp" : "opacity-0"} mb-6 sm:mb-8 md:mb-10`}
+          className={`${mounted ? "animate-fadeInUp" : "opacity-0"} mb-6 sm:mb-8 md:mb-10 flex flex-row items-center justify-center gap-3 sm:gap-4 md:gap-5`}
           style={{ animationDelay: "0.3s", animationFillMode: "forwards" }}
         >
+          {/* Enter Platform Button */}
           <button
             onClick={handleEnter}
-            className="group relative px-7 py-3.5 sm:px-8 sm:py-4 md:px-10 md:py-4 rounded-full font-semibold text-base sm:text-lg md:text-xl transition-all duration-300 font-[family-name:var(--font-space)]"
+            className="group relative px-6 py-3 sm:px-7 sm:py-3.5 md:px-8 md:py-4 rounded-full font-semibold text-base sm:text-lg md:text-xl transition-all duration-300 font-[family-name:var(--font-space)]"
           >
             {/* Button glow effect */}
             <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-70 blur-lg group-hover:opacity-100 transition-opacity duration-300" />
@@ -158,8 +159,8 @@ export default function Home() {
             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
             
             {/* Button inner */}
-            <div className="relative flex items-center gap-2 sm:gap-3 text-white">
-              <span>Enter Platform</span>
+            <div className="relative flex items-center gap-2 sm:gap-2.5 text-white">
+              <span className="whitespace-nowrap">Enter Platform</span>
               <svg
                 className="w-5 h-5 sm:w-6 sm:h-6 transform group-hover:translate-x-1 transition-transform duration-300"
                 fill="none"
@@ -175,6 +176,38 @@ export default function Home() {
               </svg>
             </div>
           </button>
+
+          {/* Download APK Button */}
+          <a
+            href="https://drive.google.com/file/d/1bs9pWlFLCam_gd3QYDBv4jkKUS51Y1tS/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative px-6 py-3 sm:px-7 sm:py-3.5 md:px-8 md:py-4 rounded-full font-semibold text-base sm:text-lg md:text-xl transition-all duration-300 font-[family-name:var(--font-space)]"
+          >
+            {/* Button glow effect */}
+            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 opacity-70 blur-lg group-hover:opacity-100 transition-opacity duration-300" />
+            
+            {/* Button background */}
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500" />
+            
+            {/* Button inner */}
+            <div className="relative flex items-center gap-2 sm:gap-2.5 text-white">
+              <svg
+                className="w-5 h-5 sm:w-6 sm:h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <span className="whitespace-nowrap">Download APK</span>
+            </div>
+          </a>
         </div>
 
         {/* Features */}

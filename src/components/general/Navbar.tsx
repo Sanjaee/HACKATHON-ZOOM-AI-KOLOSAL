@@ -120,29 +120,6 @@ export default function Navbar() {
                     </div>
                   </div>
                 </DropdownMenuLabel>
-                <div className="py-1">
-                  <DropdownMenuItem
-                    onClick={() => router.push("/profile")}
-                    className="cursor-pointer text-gray-300 hover:text-white hover:bg-white/10 focus:bg-white/10 mx-1 rounded-md"
-                  >
-                    <User className="mr-2.5 h-4 w-4 text-gray-400" />
-                    Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => router.push("/zoom")}
-                    className="cursor-pointer text-gray-300 hover:text-white hover:bg-white/10 focus:bg-white/10 mx-1 rounded-md"
-                  >
-                    <Video className="mr-2.5 h-4 w-4 text-gray-400" />
-                    My Rooms
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => router.push("/settings")}
-                    className="cursor-pointer text-gray-300 hover:text-white hover:bg-white/10 focus:bg-white/10 mx-1 rounded-md"
-                  >
-                    <Settings className="mr-2.5 h-4 w-4 text-gray-400" />
-                    Settings
-                  </DropdownMenuItem>
-                </div>
                 <DropdownMenuSeparator className="bg-gray-800" />
                 <div className="py-1">
                   <DropdownMenuItem
