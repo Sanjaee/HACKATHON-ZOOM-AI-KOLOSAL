@@ -50,7 +50,6 @@ export function ChatbotSettings({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="chat">💬 Chat</SelectItem>
-            <SelectItem value="agent">🤖 Agent</SelectItem>
             <SelectItem value="detect">🔍 Object Detection</SelectItem>
             <SelectItem value="ocr">📝 OCR (Text Extract)</SelectItem>
           </SelectContent>
