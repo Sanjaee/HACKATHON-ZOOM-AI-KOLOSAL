@@ -2,11 +2,12 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { api, TokenManager } from "../../../lib/api";
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     }),
     CredentialsProvider({
       id: "credentials",
@@ -14,108 +15,96 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
-        accessToken: { label: "Access Token", type: "text" },
-        refreshToken: { label: "Refresh Token", type: "text" },
       },
       async authorize(credentials) {
         try {
-          // If accessToken is provided (from OTP verification), use it directly
-          if (credentials?.accessToken) {
-            try {
-              // Decode JWT token to get user info (no need to call API)
-              const tokenParts = credentials.accessToken.split('.');
-              if (tokenParts.length !== 3) {
-                return null;
-              }
-
-              // Decode JWT payload (base64url) - Node.js environment
-              let base64 = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
-              // Add padding if needed
-              while (base64.length % 4) {
-                base64 += '=';
-              }
-
-              // Use Buffer if available (Node.js), otherwise use atob (browser)
-              let payloadStr: string;
-              if (typeof Buffer !== 'undefined') {
-                payloadStr = Buffer.from(base64, 'base64').toString();
-              } else {
-                payloadStr = atob(base64);
-              }
-
-              const payload = JSON.parse(payloadStr);
-
-              // Extract user info from JWT payload
-              const userId = payload.userId || payload.sub || "";
-              const email = payload.email || "";
-              const role = payload.role || "member";
-              
-              // Use email prefix as name (can be enhanced later)
-              const userName = email.split("@")[0] || "User";
-
-              return {
-                id: userId,
-                email: email,
-                name: userName,
-                image: "",
-                accessToken: credentials.accessToken,
-                refreshToken: credentials.refreshToken || "",
-                isVerified: true, // If token exists, email is verified
-                userType: role,
-                loginType: "credential",
-              };
-            } catch (error) {
-              return null;
-            }
-          }
-
           // Regular login with email/password
           if (!credentials?.email || !credentials?.password) {
+            console.error("[NextAuth] Missing credentials");
             return null;
           }
 
+          console.log("[NextAuth] Attempting login for:", credentials.email);
+          
+          // Backend returns: { success, access_token, refresh_token, user }
           const authResponse = await api.login({
             email: credentials.email,
             password: credentials.password,
+          }) as any;
+
+          console.log("[NextAuth] Login response received:", {
+            hasAccessToken: !!authResponse?.access_token,
+            hasRefreshToken: !!authResponse?.refresh_token,
+            hasUser: !!authResponse?.user,
           });
 
-          // Check if email verification is required
-          if (authResponse.requires_verification && authResponse.verification_token) {
-            // Throw special error to trigger redirect to verification page
-            const error = new Error("EMAIL_NOT_VERIFIED") as Error & {
-              verification_token?: string;
-              user_email?: string;
-            };
-            error.verification_token = authResponse.verification_token;
-            error.user_email = authResponse.user.email;
-            throw error;
+          // Handle backend response structure
+          // Backend response: { success, access_token, refresh_token, user }
+          const accessToken = authResponse?.access_token;
+          const refreshToken = authResponse?.refresh_token;
+          const userData = authResponse?.user;
+
+          if (!accessToken || !userData) {
+            console.error("[NextAuth] Invalid response structure:", authResponse);
+            throw new Error("Invalid response from server");
           }
 
-          // Store tokens in localStorage
-          TokenManager.setTokens(
-            authResponse.access_token,
-            authResponse.refresh_token
-          );
+          // Store tokens in localStorage (client-side only)
+          if (typeof window !== "undefined") {
+            TokenManager.setTokens(accessToken, refreshToken);
+          }
+
+          console.log("[NextAuth] Login successful for user:", userData.email);
 
           return {
-            id: authResponse.user.id,
-            email: authResponse.user.email,
-            name: authResponse.user.full_name,
-            image: authResponse.user.profile_photo || "",
-            accessToken: authResponse.access_token,
-            refreshToken: authResponse.refresh_token,
-            isVerified: authResponse.user.is_verified,
-            userType: authResponse.user.user_type,
-            loginType: authResponse.user.login_type,
+            id: userData.id,
+            email: userData.email,
+            name: userData.full_name || userData.email.split("@")[0],
+            image: userData.profile_photo || "",
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            isVerified: userData.is_verified ?? true,
+            userType: userData.user_type || "admin",
+            loginType: userData.login_type || "credential",
           };
-        } catch (error) {
-          // Check if it's a specific error from our backend and throw it
+        } catch (error: any) {
+          // Log the error for debugging
+          console.error("[NextAuth] Authorization error:", error);
+          console.error("[NextAuth] Error message:", error?.message);
+          console.error("[NextAuth] Error response:", error?.response);
+
+          // Check if it's a specific error from our backend
           if (error instanceof Error) {
+            // Extract error message from response if available
+            let errorMessage = error.message;
+            
+            const errorWithResponse = error as Error & {
+              response?: {
+                data?: any;
+              };
+            };
+            
+            if (errorWithResponse.response?.data) {
+              const errorData = errorWithResponse.response.data;
+              // Backend error structure: { success: false, message: "...", error: {...} }
+              errorMessage = errorData.message || errorData.error?.message || errorMessage;
+              
+              // Check for email verification error
+              if (errorData.data?.requires_verification || errorMessage.includes("not verified")) {
+                // Create a custom error that NextAuth can handle
+                const verificationError = new Error(errorMessage) as any;
+                verificationError.requiresVerification = true;
+                verificationError.email = credentials?.email;
+                throw verificationError;
+              }
+            }
+
             // Pass through the specific error message from our backend
             // Frontend will catch and display in toast
-            throw error;
+            throw new Error(errorMessage);
           }
 
+          console.error("[NextAuth] Unknown error type, returning null");
           return null;
         }
       },
@@ -123,58 +112,101 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account }) {
-      // Handle Google OAuth
+      // Handle Google OAuth sign in
       if (account?.provider === "google") {
         try {
-          const authResponse = await api.googleOAuth({
-            email: user.email!,
-            full_name: user.name || user.email!.split("@")[0],
-            profile_photo: user.image || "",
-            google_id: account.providerAccountId,
+          console.log("[NextAuth] Google OAuth sign in:", {
+            email: user.email,
+            name: user.name,
+            image: user.image,
+            googleId: account.providerAccountId,
           });
 
-          // Store the tokens in the user object for the JWT callback
-          user.accessToken = authResponse.access_token;
-          user.refreshToken = authResponse.refresh_token;
-          user.isVerified = authResponse.user.is_verified;
-          user.userType = authResponse.user.user_type;
-          user.loginType = authResponse.user.login_type;
-          user.image = authResponse.user.profile_photo || user.image;
+          // Call backend Google OAuth endpoint
+          const googleOAuthResponse = await api.googleOAuth({
+            email: user.email || "",
+            full_name: user.name || user.email?.split("@")[0] || "",
+            profile_photo: user.image || "",
+            google_id: account.providerAccountId,
+          }) as any;
 
-          return true;
-        } catch (error) {
-          // Check if it's a specific error from our backend
-          if (error instanceof Error) {
-            // Map error messages for toast display
-            if (error.message.includes("already registered with password") || 
-                error.message.includes("already registered with credentials")) {
-              throw new Error("Email sudah terdaftar dengan password. Silakan login dengan email dan password.");
-            }
-            if (error.message.includes("different Google account")) {
-              throw new Error("Email sudah terdaftar dengan akun Google yang berbeda.");
-            }
-            // Re-throw with original message for toast display
-            throw error;
+          console.log("[NextAuth] Google OAuth response:", {
+            hasAccessToken: !!googleOAuthResponse?.access_token,
+            hasRefreshToken: !!googleOAuthResponse?.refresh_token,
+            hasUser: !!googleOAuthResponse?.user,
+          });
+
+          // Store tokens in localStorage (client-side only)
+          if (typeof window !== "undefined") {
+            TokenManager.setTokens(
+              googleOAuthResponse.access_token,
+              googleOAuthResponse.refresh_token
+            );
           }
 
-          return false;
+          // Attach tokens and user data to user object for JWT callback
+          (user as any).accessToken = googleOAuthResponse.access_token;
+          (user as any).refreshToken = googleOAuthResponse.refresh_token;
+          user.id = googleOAuthResponse.user?.id || user.id;
+          (user as any).isVerified = googleOAuthResponse.user?.is_verified ?? true;
+          (user as any).userType = googleOAuthResponse.user?.user_type || "member";
+          (user as any).loginType = "google";
+
+          return true;
+        } catch (error: any) {
+          console.error("[NextAuth] Google OAuth error:", error);
+          console.error("[NextAuth] Error message:", error?.message);
+          console.error("[NextAuth] Error response:", error?.response);
+
+          // Extract error message
+          let errorMessage = error?.message || "Google authentication failed";
+          
+          if (error?.response?.data) {
+            const errorData = error.response.data;
+            errorMessage = errorData.message || errorData.error?.message || errorMessage;
+          }
+
+          // Check for specific errors
+          if (errorMessage.includes("sudah terdaftar dengan email dan password")) {
+            throw new Error("AccessDenied");
+          }
+
+          throw new Error(errorMessage);
         }
       }
+
+      // Credentials provider - already handled in authorize function
       return true;
     },
     async jwt({ token, user, account, trigger }) {
       // Initial sign in
       if (account && user) {
+        // Handle both credentials and Google OAuth
+        const accessToken = (user as any).accessToken;
+        const refreshToken = (user as any).refreshToken;
+        const isVerified = (user as any).isVerified ?? (account.provider === "google" ? true : false);
+        const userType = (user as any).userType || "member";
+        const loginType = (user as any).loginType || (account.provider === "google" ? "google" : "credential");
+
+        console.log("[NextAuth] JWT callback - Initial sign in:", {
+          provider: account.provider,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          loginType,
+          userType,
+          userId: user.id,
+        });
+
         return {
           ...token,
           sub: user.id,
-          accessToken: user.accessToken,
-          refreshToken: user.refreshToken,
-          isVerified: user.isVerified,
-          userType: user.userType,
-          loginType: user.loginType,
+          accessToken: accessToken || "",
+          refreshToken: refreshToken || "",
+          isVerified: isVerified,
+          userType: userType,
+          loginType: loginType,
           image: user.image,
-          accessTokenExpires: Date.now() + 15 * 60 * 1000, // 15 minutes
+          accessTokenExpires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days (matches backend JWT expiration)
         };
       }
 
@@ -201,7 +233,7 @@ export const authOptions: NextAuthOptions = {
               };
             }
           }
-        } catch (error) {
+        } catch (_error) {
           // Continue with existing token if fetch fails
         }
       }
@@ -222,6 +254,14 @@ export const authOptions: NextAuthOptions = {
       } as typeof token;
     },
     async session({ session, token }) {
+      // Log token for debugging
+      console.log("[NextAuth] Session callback:", {
+        hasAccessToken: !!token.accessToken,
+        hasRefreshToken: !!token.refreshToken,
+        loginType: token.loginType,
+        userType: token.userType,
+      });
+
       if (session.user) {
         session.user.id = token.sub as string;
         // Prioritize token.image over session.user.image
@@ -230,11 +270,14 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.userType as string; // Add role alias
         session.user.username = (token.name as string) || session.user.name; // Add username alias
       }
-      session.accessToken = token.accessToken as string;
-      session.refreshToken = token.refreshToken as string;
-      session.isVerified = token.isVerified as boolean;
-      session.userType = token.userType as string;
-      session.loginType = token.loginType as string;
+      
+      // Ensure tokens are set (fallback to empty string if undefined)
+      session.accessToken = (token.accessToken as string) || "";
+      session.refreshToken = (token.refreshToken as string) || "";
+      session.isVerified = (token.isVerified as boolean) ?? true;
+      session.userType = (token.userType as string) || "member";
+      session.loginType = (token.loginType as string) || "credential";
+      
       return session;
     },
   },
@@ -266,26 +309,36 @@ async function refreshAccessToken(token: {
       };
     }
 
-    const refreshedTokens = await api.refreshToken(token.refreshToken);
+    // Backend might not have refresh token endpoint, so try to refresh
+    // If it fails, return error to force re-login
+    try {
+      const refreshedTokens = await api.refreshToken(token.refreshToken) as any;
 
-    if (!refreshedTokens) {
+      if (!refreshedTokens || !refreshedTokens.access_token) {
+        return {
+          ...token,
+          error: "RefreshAccessTokenError",
+        };
+      }
+
+      return {
+        ...token,
+        accessToken: refreshedTokens.access_token,
+        accessTokenExpires: Date.now() + (refreshedTokens.expires_in || 7 * 24 * 60 * 60) * 1000,
+        refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
+        isVerified: refreshedTokens.user?.is_verified ?? token.isVerified ?? true,
+        userType: refreshedTokens.user?.user_type ?? token.userType ?? "admin",
+        loginType: refreshedTokens.user?.login_type ?? token.loginType ?? "credential",
+        image: refreshedTokens.user?.profile_photo || token.image || "",
+      };
+    } catch (_refreshError) {
+      // If refresh fails, return error to force re-login
       return {
         ...token,
         error: "RefreshAccessTokenError",
       };
     }
-
-    return {
-      ...token,
-      accessToken: refreshedTokens.access_token,
-      accessTokenExpires: Date.now() + refreshedTokens.expires_in * 1000,
-      refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
-      isVerified: refreshedTokens.user?.is_verified ?? true,
-      userType: refreshedTokens.user?.user_type ?? "member",
-      loginType: refreshedTokens.user?.login_type ?? "credential",
-      image: refreshedTokens.user?.profile_photo || token.image || "",
-    };
-  } catch (error) {
+  } catch (_error) {
     return {
       ...token,
       error: "RefreshAccessTokenError",

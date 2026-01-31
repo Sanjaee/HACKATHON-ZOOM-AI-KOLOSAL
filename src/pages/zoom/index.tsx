@@ -79,14 +79,19 @@ export default function ZoomRoomsPage() {
       if (session.refreshToken) {
         TokenManager.setTokens(token, session.refreshToken as string);
       }
-    } else {
-      token = TokenManager.getAccessToken();
-    }
-
-    if (token) {
+      // Set token to API client
       api.setAccessToken(token);
+      console.log("[Zoom] Token set from session:", { hasToken: !!token, loginType: session.loginType });
     } else {
-      router.push("/auth/login?callbackUrl=" + encodeURIComponent("/zoom"));
+      // Fallback to localStorage
+      token = TokenManager.getAccessToken();
+      if (token) {
+        api.setAccessToken(token);
+        console.log("[Zoom] Token set from localStorage:", { hasToken: !!token });
+      } else {
+        console.error("[Zoom] No token found, redirecting to login");
+        router.push("/auth/login?callbackUrl=" + encodeURIComponent("/zoom"));
+      }
     }
   }, [session, status, router]);
 

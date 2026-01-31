@@ -17,13 +17,29 @@ import type {
 
 // Use environment variable or relative URL for production
 // In production with nginx, API is on same domain under /api path
-// For server-side calls (NextAuth), use internal Docker network URL
-// For client-side calls, use public API URL
+// For server-side calls (NextAuth), use internal Docker network URL or public URL
+// For client-side calls, use public API URL (empty string = relative URL)
 const isServer = typeof window === "undefined";
 
+// Determine API base URL
+// Server-side (NextAuth): Use BACKEND_URL, NEXT_PUBLIC_BACKEND_URL, or NEXT_PUBLIC_API_URL
+// Client-side: Use NEXT_PUBLIC_API_URL or empty string (relative URL)
 const API_BASE_URL = isServer
-  ? process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://zoom.zacloth.com"
+  ? process.env.BACKEND_URL || 
+    process.env.NEXT_PUBLIC_BACKEND_URL || 
+    process.env.NEXT_PUBLIC_API_URL || 
+    "https://zoom.zacloth.com"
   : process.env.NEXT_PUBLIC_API_URL || "";
+
+// Log API configuration for debugging (server-side only)
+if (isServer) {
+  console.log("[API] Server-side API configuration:", {
+    BACKEND_URL: process.env.BACKEND_URL ? "set" : "not set",
+    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL ? "set" : "not set",
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ? "set" : "not set",
+    finalBaseURL: API_BASE_URL,
+  });
+}
 
 class ApiClient {
   private baseURL: string;
@@ -72,13 +88,14 @@ class ApiClient {
         const errorData = await response.json().catch(() => ({}));
 
         // Extract error message from nested error object if present
+        // Backend error structure: { success: false, message: "...", error: {...}, data: {...} }
         let errorMessage =
           errorData.message ||
           errorData.error?.message ||
           (typeof errorData.error === "string" ? errorData.error : null) ||
           `HTTP ${response.status}: ${response.statusText}`;
 
-        // Handle data wrapper if present
+        // Handle data wrapper if present (backend may wrap additional data here)
         if (errorData.data && typeof errorData.data === "object") {
           errorMessage =
             errorData.data.message ||
@@ -91,7 +108,7 @@ class ApiClient {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         }
 
-        // Create error with response data preserved
+        // Create error with response data preserved (including data.requires_verification, etc.)
         const error = new Error(errorMessage) as Error & {
           response?: {
             status: number;
@@ -101,8 +118,15 @@ class ApiClient {
 
         error.response = {
           status: response.status,
-          data: errorData,
+          data: errorData, // Preserve full error data structure
         };
+
+        console.error(`[API] Request failed [${url}]:`, {
+          status: response.status,
+          statusText: response.statusText,
+          errorMessage,
+          errorData,
+        });
 
         throw error;
       }
@@ -130,10 +154,22 @@ class ApiClient {
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
-    return this.request<AuthResponse>("/api/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    console.log("[API] Login request to:", `${this.baseURL}/api/v1/auth/login`);
+    console.log("[API] Is server:", typeof window === "undefined");
+    console.log("[API] Base URL:", this.baseURL);
+    try {
+      const response = await this.request<AuthResponse>("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      console.log("[API] Login response received");
+      return response;
+    } catch (error: any) {
+      console.error("[API] Login error:", error);
+      console.error("[API] Error message:", error?.message);
+      console.error("[API] Error response:", error?.response);
+      throw error;
+    }
   }
 
   async verifyOTP(data: OTPVerifyRequest): Promise<OTPVerifyResponse> {

@@ -102,10 +102,12 @@ export const LoginForm = () => {
         }
 
         // If verified, proceed with NextAuth login
+        // Note: NextAuth CredentialsProvider expects email and password, not tokens
+        // The authorize function will call the API again, but that's okay for consistency
         const result = await signIn("credentials", {
           redirect: false,
-          accessToken: authResponse.access_token,
-          refreshToken: authResponse.refresh_token,
+          email: formData.email,
+          password: formData.password,
         });
 
         if (result?.ok) {
